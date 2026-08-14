@@ -24,7 +24,7 @@ jobs:
           node-version: 22
 
       - name: dependencies
-        run: pnpm install --frozen-logfile
+        run: pnpm install --frozen-lockfile
 
       - name: build ui
         env:
