@@ -1,0 +1,43 @@
+name: navajyoti-transport
+
+on:
+  push: 
+    branches: [main]
+
+jobs:
+  deploy: 
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: checkout code
+        uses: actions/checkout@v4
+
+      - name: setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 8.15.6
+
+      - name: setup node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: dependencies
+        run: pnpm install --frozen-logfile
+
+      - name: build ui
+        env:
+          VITE_API_BASE_URL=https://navajyoti-transport-api.ctrlaltfix.in
+        run: pnpm build
+
+      - name: deploy to vps
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{secrets.SSH_KEY}}
+
+      - name: output to server
+        run: |
+          rsync -avz --delete \
+          -e "ssh -p 22 -o StrictHostKeyChecking=no" \
+          dist/ \
+          ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:${{ secrets.VPS_PATH}}
