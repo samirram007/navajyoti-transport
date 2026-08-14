@@ -2,7 +2,8 @@ name: navajyoti-transport
 
 on:
   push: 
-    branches: [main]
+    branches: 
+      - main
 
 jobs:
   deploy: 
