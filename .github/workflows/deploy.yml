@@ -28,7 +28,7 @@ jobs:
 
       - name: build ui
         env:
-          VITE_API_BASE_URL=https://navajyoti-transport-api.ctrlaltfix.in
+          VITE_API_BASE_URL: https://navajyoti-transport-api.ctrlaltfix.in
         run: pnpm build
 
       - name: deploy to vps
