@@ -4,13 +4,18 @@ import { z } from 'zod'
  * Base search schema for paginated list routes.
  *
  * Shared across all list pages so pagination / sort / search params are
- * validated consistently. The `page` param uses `.min(1).catch(undefined)`
- * so that empty strings, zero, NaN, and negative values are silently
- * replaced with `undefined` (component defaults to page 1) instead of
- * throwing a SearchParamError that breaks the route.
+ * validated consistently. The `page` param uses a transform to coerce
+ * invalid values (empty string, NaN, zero, negative) to `undefined`
+ * so that the component defaults to page 1 instead of throwing a
+ * SearchParamError that breaks the route.
  */
 export const paginationSearchSchema = z.object({
-  page: z.coerce.number().min(1).catch(undefined),
+  page: z.string().optional().transform((val) => {
+    if (val === undefined || val === '') return undefined
+    const num = Number(val)
+    if (isNaN(num) || num < 1) return undefined
+    return num
+  }),
   size: z.coerce.number().optional(),
   sort: z.string().optional(),
   dir: z.enum(['asc', 'desc']).optional(),

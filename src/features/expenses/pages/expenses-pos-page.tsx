@@ -406,7 +406,7 @@ export function ExpensesPosPage({ editExpense }: { editExpense?: any }) {
     setPaymentDetails(prev => ({ ...prev, [key]: value }))
   }
 
-  const goBack = () => { navigate({ to: '/expenses' }) }
+  const goBack = () => { navigate({ to: '/expenses', search: {} }) }
 
   // ── Render ──
   return (
