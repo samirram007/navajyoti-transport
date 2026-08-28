@@ -1,10 +1,17 @@
 /* oxlint-disable react/only-export-components */
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
+import { z } from 'zod'
 import { ResourcePage, type Field } from '@/components/resource-page'
 import { type FilterableColumnConfig } from '@/components/data-table'
 import { ExpenseSchema } from '@/features/expenses/schemas'
 import { type ColumnDef } from '@tanstack/react-table'
-export const Route = createFileRoute('/_protected/expenses/')({ component: ExpensesPage })
+import { paginationSearchSchema } from '@/lib/search-schemas'
+export const Route = createFileRoute('/_protected/expenses/')({
+  validateSearch: paginationSearchSchema.extend({
+    filters: z.string().optional(),
+  }),
+  component: ExpensesPage,
+})
 const PAYMENT_STATUS_STYLES: Record<string, { label: string; color: string }> = {
   cash: { label: 'Cash', color: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400' },
   bank_transfer: { label: 'Bank Transfer', color: 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400' },

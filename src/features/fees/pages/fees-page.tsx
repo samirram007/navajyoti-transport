@@ -1,18 +1,24 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { useNavigate } from '@tanstack/react-router'
-import { useState } from 'react'
-import { DataTable } from '@/components/data-table'
+import { useNavigate, useSearch } from '@tanstack/react-router'
+import { useState, useEffect, useRef, useCallback } from 'react'
+import type { FeesSearchParams } from '@/routes/_protected/fees/index'
+import { usePersistedPageSize } from '@/hooks/use-persisted-page-size'
+import { usePersistedSortDir } from '@/hooks/use-persisted-sort-dir'
+import { DataTable, type FilterableColumnConfig } from '@/components/data-table'
 import { PageHeader } from '@/components/page-header'
 import { Button } from '@/components/ui/button'
 import { toast } from 'sonner'
 import { Pencil, Trash2, Plus, User, Calendar,
   ShoppingCart, Printer, BadgeCheck, Ban, Minus,
-  AlertCircle, RefreshCw,
+  AlertCircle, RefreshCw, Eye,
 } from 'lucide-react'
-import { type ColumnDef } from '@tanstack/react-table'
-import { type FilterableColumnConfig } from '@/components/data-table'
-import { getFeesApi, deleteFeeApi } from '@/features/fees/services'
+import { type ColumnDef, type SortingState, type ColumnFiltersState } from '@tanstack/react-table'
+import { getFeesApi, deleteFeeApi, type FeesQueryParams } from '@/features/fees/services'
+import { useUserInitialValues } from '@/contexts/user-initial-values-context'
+import { useReportingPeriod } from '@/hooks/use-reporting-period'
 import { CancelVoucherDialog } from '@/features/fees/components/cancel-voucher-dialog'
+import { RiderFeeSummaryDialog } from '@/features/fees/components/rider-fee-summary-dialog'
+import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
 
 function formatAmount(val: number | undefined | null): string {
@@ -109,8 +115,130 @@ export function FeesPage() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
 
-  const { data: fees, isLoading: feesLoading, isError: feesError, refetch: refetchFees } = useQuery({ queryKey: ['fees'], queryFn: getFeesApi })
+  // ── Read global filters from navbar context ──
+  const { getValue } = useUserInitialValues()
+  const savedFiscalYearId = getValue('fiscalYearId')
+  const { from: reportingFrom, to: reportingTo } = useReportingPeriod()
 
+  // ── Read state from URL search params ──
+  const search = useSearch({ from: '/_protected/fees/' })
+  const [pageIndex, setPageIndex] = useState(Math.max(0, (search.page ?? 1) - 1))
+  const [pageSize, setPageSize] = usePersistedPageSize()
+  const [defaultSortDir, setDefaultSortDir] = usePersistedSortDir('fees')
+  const [sorting, setSorting] = useState<SortingState>(() => {
+    if (search.sort) return [{ id: search.sort, desc: (search.dir ?? defaultSortDir) === 'desc' }]
+    return []
+  })
+  const [globalFilter, setGlobalFilter] = useState(search.search ?? '')
+  const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>(() => {
+    const filters: ColumnFiltersState = []
+    if (search.paymentMode) filters.push({ id: 'paymentMode', value: search.paymentMode })
+    if (search.status) filters.push({ id: 'feeStatus', value: search.status })
+    return filters
+  })
+
+  // ── Sync state from URL on every navigation (back/forward) ──
+  useEffect(() => {
+    setPageIndex(Math.max(0, (search.page ?? 1) - 1))
+  }, [search.page])
+  useEffect(() => {
+    if (search.sort) {
+      setSorting([{ id: search.sort, desc: (search.dir ?? defaultSortDir) === 'desc' }])
+    } else {
+      setSorting([])
+    }
+  }, [search.sort, search.dir, defaultSortDir])
+  useEffect(() => {
+    setGlobalFilter(search.search ?? '')
+  }, [search.search])
+  useEffect(() => {
+    const filters: ColumnFiltersState = []
+    if (search.paymentMode) filters.push({ id: 'paymentMode', value: search.paymentMode })
+    if (search.status) filters.push({ id: 'feeStatus', value: search.status })
+    setColumnFilters(filters)
+  }, [search.paymentMode, search.status])
+
+  // ── Sync state changes back to URL ──
+  // Skip the first syncToUrl calls during mount — TanStack Table fires
+  // onPaginationChange with default values that would strip URL params like ?page=3
+  const initialSyncDone = useRef(false)
+  useEffect(() => {
+    requestAnimationFrame(() => { initialSyncDone.current = true })
+  }, [])
+
+  const syncToUrl = useCallback((overrides?: Partial<FeesSearchParams>, replace = false) => {
+    if (!initialSyncDone.current) return
+    const page = overrides?.page ?? pageIndex
+    const size = overrides?.size ?? pageSize
+    const sort = overrides?.sort ?? (sorting.length > 0 ? sorting[0].id : '')
+    const dir = overrides?.dir ?? (sorting.length > 0 ? (sorting[0].desc ? 'desc' : 'asc') : 'desc')
+    const searchVal = overrides?.search ?? globalFilter
+    const paymentMode = overrides?.paymentMode ?? (columnFilters.find(f => f.id === 'paymentMode')?.value as string || '')
+    const status = overrides?.status ?? (columnFilters.find(f => f.id === 'feeStatus')?.value as string || '')
+    // Remove empty/default values to keep URL clean
+    const clean: Record<string, any> = {}
+    if (page + 1 > 1) clean.page = page + 1
+    if (size !== 10) clean.size = size
+    if (sort) clean.sort = sort
+    if (dir !== 'desc') clean.dir = dir
+    if (searchVal) clean.search = searchVal
+    if (paymentMode) clean.paymentMode = paymentMode
+    if (status) clean.status = status
+    // Skip navigation if the generated URL matches the current one
+    const currentParams = new URLSearchParams(window.location.search)
+    const cleanParams = new URLSearchParams()
+    for (const [k, v] of Object.entries(clean)) {
+      cleanParams.set(k, String(v))
+    }
+    if (currentParams.toString() === cleanParams.toString()) return
+    navigate({ search: clean as any, replace })
+  }, [pageIndex, pageSize, sorting, globalFilter, columnFilters, navigate])
+
+  // ── Build API params from navbar context ──
+  const apiParams: FeesQueryParams = {
+    page: pageIndex + 1,
+    per_page: pageSize,
+  }
+
+  // Fiscal year from navbar dropdown
+  if (savedFiscalYearId) apiParams.filter_fiscal_year_id = savedFiscalYearId
+
+  // Date range from navbar reporting period
+  if (reportingFrom) apiParams.filter_fee_date_from = reportingFrom
+  if (reportingTo) apiParams.filter_fee_date_to = reportingTo
+
+  if (globalFilter) apiParams.search = globalFilter
+  if (sorting.length > 0) {
+    apiParams.sort_by = sorting[0].id
+    apiParams.sort_dir = sorting[0].desc ? 'desc' : 'asc'
+  }
+
+  // Column filters → API params
+  for (const f of columnFilters) {
+    if (f.id === 'feeStatus') {
+      // Status is computed client-side, handled via filterFn in column def
+    } else if (f.id === 'paymentMode') {
+      apiParams.filter_payment_mode = f.value as string
+    }
+  }
+
+  // ── Fetch fees ──
+  const { data: feesResult, isLoading: feesLoading, isError: feesError, refetch: refetchFees } = useQuery({
+    queryKey: ['fees', apiParams],
+    queryFn: () => getFeesApi(apiParams),
+    placeholderData: (prev) => prev,
+  })
+
+  const fees = feesResult?.data || []
+  const totalRecords = feesResult?.total || 0
+
+  // ── Client-side status filter (computed field, not in DB) ──
+  const statusFilter = columnFilters.find(f => f.id === 'feeStatus')
+  const filteredFees = statusFilter
+    ? fees.filter((fee: any) => getFeeStatus(fee) === statusFilter.value)
+    : fees
+
+  // ── Delete mutation ──
   const deleteMutation = useMutation({
     mutationFn: ({ id, createCreditNote }: { id: number; createCreditNote: boolean }) => deleteFeeApi(id, createCreditNote),
     onSuccess: (res: any) => {
@@ -124,6 +252,29 @@ export function FeesPage() {
   })
 
   const [cancelFee, setCancelFee] = useState<any>(null)
+  const [feeSummaryOpen, setFeeSummaryOpen] = useState(false)
+  const [selectedRider, setSelectedRider] = useState<{ id: number; name: string } | null>(null)
+
+  // Ctrl+E keyboard shortcut — open fee summary for hovered row
+  const openFeeSummaryRef = useRef<(id: number, name: string) => void>(() => {})
+  openFeeSummaryRef.current = (id, name) => {
+    setSelectedRider({ id, name })
+    setFeeSummaryOpen(true)
+  }
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'e') {
+        const hovered = document.querySelector<HTMLElement>('tr:hover[data-row-id]')
+        if (hovered) {
+          const id = Number(hovered.dataset.rowId)
+          const name = hovered.dataset.rowName || ''
+          if (id) openFeeSummaryRef.current(id, name)
+        }
+      }
+    }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [])
 
   const columns: ColumnDef<any>[] = [
     { header: 'Fee No', accessorKey: 'feeNo' },
@@ -141,6 +292,23 @@ export function FeesPage() {
             <Plus className="h-3 w-3" />
             Fees
           </Button>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                className="inline-flex items-center justify-center h-6 w-6 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  if (row.original.rider?.id) {
+                    setSelectedRider({ id: row.original.rider.id, name: row.original.rider.name })
+                    setFeeSummaryOpen(true)
+                  }
+                }}
+              >
+                <Eye className="h-3.5 w-3.5" />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent>Fee summary for {row.original.rider?.name}</TooltipContent>
+          </Tooltip>
         </div>
       ),
     },
@@ -303,7 +471,35 @@ export function FeesPage() {
           </Button>
         </div>
       ) : (
-        <DataTable columns={columns} data={fees || []} loading={feesLoading} searchKey="feeNo"
+        <DataTable
+          columns={columns}
+          data={filteredFees}
+          loading={feesLoading}
+          searchKey="feeNo"
+          rowNameAccessor="rider.name"
+          initialPageSize={pageSize}
+          serverSide
+          pageIndex={pageIndex}
+          total={totalRecords}
+          pageCount={Math.ceil(totalRecords / pageSize) || 1}
+          onPaginationChange={(p, s) => { setPageIndex(p); setPageSize(s); syncToUrl({ page: p, size: s }, false) }}
+          onSortingChange={(newSorting) => {
+            setSorting(newSorting)
+            const dir = newSorting.length > 0 ? (newSorting[0].desc ? 'desc' as const : 'asc' as const) : defaultSortDir
+            setDefaultSortDir(dir)
+            syncToUrl({
+              sort: newSorting.length > 0 ? newSorting[0].id : '',
+              dir,
+            }, false)
+          }}
+          onGlobalFilterChange={(val) => { setGlobalFilter(val); syncToUrl({ search: val }, false) }}
+          onColumnFiltersChange={(filters) => {
+            setColumnFilters(filters)
+            syncToUrl({
+              paymentMode: (filters.find(f => f.id === 'paymentMode')?.value as string) || '',
+              status: (filters.find(f => f.id === 'feeStatus')?.value as string) || '',
+            }, false)
+          }}
           filterableColumns={[
             { id: 'paymentMode', type: 'select', options: [
               { label: 'Cash', value: 'cash' },
@@ -318,8 +514,6 @@ export function FeesPage() {
               { label: 'Partial', value: 'Partial' },
               { label: 'Cancelled', value: 'Cancelled' },
             ] },
-            'fiscalYear.name',
-            'note',
           ] as FilterableColumnConfig[]}
         />
       )}
@@ -331,6 +525,15 @@ export function FeesPage() {
         loading={deleteMutation.isPending}
         onConfirm={(createCreditNote) => { if (cancelFee) { deleteMutation.mutate({ id: cancelFee.id, createCreditNote }); setCancelFee(null) } }}
       />
+
+      {selectedRider && (
+        <RiderFeeSummaryDialog
+          open={feeSummaryOpen}
+          onOpenChange={setFeeSummaryOpen}
+          riderId={selectedRider.id}
+          riderName={selectedRider.name}
+        />
+      )}
     </div>
   )
 }

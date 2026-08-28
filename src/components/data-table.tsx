@@ -34,10 +34,18 @@ interface DataTableProps<TData, TValue> {
   filterableColumns?: FilterableColumnConfig[]
   loading?: boolean
   onRowClick?: (row: TData) => void
+  /** Dot-path accessor for the row label stored in data-row-name (default: 'name') */
+  rowNameAccessor?: string
+  /** Initial page size (e.g. from persisted user preference) */
+  initialPageSize?: number
   // Server-side mode
   serverSide?: boolean
   pageCount?: number
   total?: number
+  /** Controlled page index (0-based) — keeps the nav bar in sync with URL state */
+  pageIndex?: number
+  /** Controlled page size — keeps the page size selector in sync with parent state */
+  pageSize?: number
   onPaginationChange?: (pageIndex: number, pageSize: number) => void
   onSortingChange?: (sorting: SortingState) => void
   onGlobalFilterChange?: (value: string) => void
@@ -51,9 +59,13 @@ export function DataTable<TData, TValue>({
   filterableColumns,
   loading,
   onRowClick,
+  rowNameAccessor = 'name',
+  initialPageSize = 10,
   serverSide,
   pageCount,
   total,
+  pageIndex: pageIndexProp,
+  pageSize: pageSizeProp,
   onPaginationChange,
   onSortingChange,
   onGlobalFilterChange,
@@ -63,7 +75,20 @@ export function DataTable<TData, TValue>({
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([])
   const [globalFilter, setGlobalFilter] = useState('')
   const [showFilters, setShowFilters] = useState(false)
-  const [pagination, setPagination] = useState<PaginationState>({ pageIndex: 0, pageSize: 10 })
+  const [pagination, setPagination] = useState<PaginationState>({ pageIndex: 0, pageSize: initialPageSize })
+
+  // In server-side mode with a controlled pageIndex or pageSize from the parent,
+  // use the prop directly so the nav bar stays in sync with URL state.
+  const effectivePageIndex = (serverSide && pageIndexProp !== undefined)
+    ? pageIndexProp
+    : pagination.pageIndex
+  const effectivePageSize = (serverSide && pageSizeProp !== undefined)
+    ? pageSizeProp
+    : pagination.pageSize
+  const effectivePagination: PaginationState = {
+    pageIndex: effectivePageIndex,
+    pageSize: effectivePageSize,
+  }
 
   const { debouncedValue: debouncedFilter, isDebouncing: isSearchDebouncing } = useDebounce(globalFilter, 300)
 
@@ -71,10 +96,15 @@ export function DataTable<TData, TValue>({
     setPagination((prev) => ({ ...prev, pageIndex: 0 }))
   }
 
+  const sortingInitRef = useRef(true)
   const handleSortingChange = (updater: any) => {
     const newValue = typeof updater === 'function' ? updater(sorting) : updater
     setSorting(newValue)
-    if (serverSide) {
+    if (sortingInitRef.current) {
+      sortingInitRef.current = false
+      return
+    }
+    if (serverSide && JSON.stringify(newValue) !== JSON.stringify(sorting)) {
       resetPage()
       onSortingChange?.(newValue)
     }
@@ -97,19 +127,32 @@ export function DataTable<TData, TValue>({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [debouncedFilter, serverSide])
 
+  const columnFiltersInitRef = useRef(true)
   const handleColumnFiltersChange = (updater: any) => {
     const newValue = typeof updater === 'function' ? updater(columnFilters) : updater
     setColumnFilters(newValue)
-    if (serverSide) {
+    if (columnFiltersInitRef.current) {
+      columnFiltersInitRef.current = false
+      return
+    }
+    if (serverSide && JSON.stringify(newValue) !== JSON.stringify(columnFilters)) {
       resetPage()
       onColumnFiltersChange?.(newValue)
     }
   }
 
+  const paginationInitRef = useRef(true)
   const handlePaginationChange = (updater: any) => {
-    const newValue = typeof updater === 'function' ? updater(pagination) : updater
+    const newValue = typeof updater === 'function' ? updater(effectivePagination) : updater
     setPagination(newValue)
-    if (serverSide) {
+    // Skip the initial call from TanStack Table during mount — it fires with
+    // the default {pageIndex:0, pageSize:10} before the controlled state is applied,
+    // which would strip URL search params like ?page=4.
+    if (paginationInitRef.current) {
+      paginationInitRef.current = false
+      return
+    }
+    if (serverSide && (newValue.pageIndex !== effectivePagination.pageIndex || newValue.pageSize !== effectivePagination.pageSize)) {
       onPaginationChange?.(newValue.pageIndex, newValue.pageSize)
     }
   }
@@ -146,7 +189,7 @@ export function DataTable<TData, TValue>({
     onColumnFiltersChange: handleColumnFiltersChange,
     onGlobalFilterChange: handleGlobalFilterChange,
     onPaginationChange: handlePaginationChange,
-    state: { sorting, columnFilters, globalFilter, pagination },
+    state: { sorting, columnFilters, globalFilter, pagination: effectivePagination },
     initialState: { pagination: { pageSize: 10 } },
   })
 
@@ -310,7 +353,7 @@ export function DataTable<TData, TValue>({
               </TableRow>
             ) : table.getRowModel().rows.length ? (
               table.getRowModel().rows.map(row => (
-                <TableRow key={row.id} className={cn(onRowClick && 'cursor-pointer')} onClick={() => onRowClick?.(row.original)}>
+                <TableRow key={row.id} data-row-id={(row.original as any).id} data-row-name={rowNameAccessor.split('.').reduce((obj: any, key) => obj?.[key], row.original) ?? ''} className={cn(onRowClick && 'cursor-pointer')} onClick={() => onRowClick?.(row.original)}>
                   {row.getVisibleCells().map(cell => (
                     <TableCell key={cell.id}>
                       {flexRender(cell.column.columnDef.cell, cell.getContext())}
@@ -344,20 +387,21 @@ export function DataTable<TData, TValue>({
       </div>
 
       {/* Pagination */}
-      <div className="flex items-center justify-between gap-2">
+      <div className="flex items-center justify-between gap-2 pt-2 pb-4">
         <div className="flex items-center gap-2">
           <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
             <List className="h-3.5 w-3.5" />
             <span>Rows:</span>
           </div>
-          <SearchableSelect
-            value={String(table.getState().pagination.pageSize)}
-            onValueChange={value => table.setPageSize(Number(value))}
-            options={[10, 25, 50, 100].map(size => ({ label: String(size), value: size }))}
-            placeholder="Rows"
-            searchPlaceholder=""
-            className="h-8 w-16 text-xs"
-          />
+          <select
+            value={table.getState().pagination.pageSize}
+            onChange={e => table.setPageSize(Number(e.target.value))}
+            className="h-8 w-20 rounded-md border border-input bg-background px-2 text-xs ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            {[10, 25, 50, 100].map(size => (
+              <option key={size} value={size}>{size} rows</option>
+            ))}
+          </select>
           <span className="text-xs text-muted-foreground">
             Page {table.getState().pagination.pageIndex + 1} of {table.getPageCount()}
           </span>
@@ -382,20 +426,27 @@ export function DataTable<TData, TValue>({
             <ChevronLeft className="h-4 w-4" />
           </Button>
           <div className="flex items-center gap-1">
-            {Array.from({ length: Math.min(5, table.getPageCount()) }, (_, i) => {
-              const page = Math.max(0, Math.min(table.getPageCount() - 1, table.getState().pagination.pageIndex - 2 + i))
-              return (
-                <Button
-                  key={page}
-                  variant={page === table.getState().pagination.pageIndex ? 'default' : 'outline'}
-                  size="sm"
-                  className="h-8 w-8 p-0 text-xs"
-                  onClick={() => table.setPageIndex(page)}
-                >
-                  {page + 1}
-                </Button>
-              )
-            })}
+            {(() => {
+              const currentPage = table.getState().pagination.pageIndex
+              const totalPages = table.getPageCount()
+              const maxButtons = Math.min(5, totalPages)
+              // Center the window around the current page, clamped to valid range
+              const start = Math.max(0, Math.min(currentPage - 2, totalPages - maxButtons))
+              return Array.from({ length: maxButtons }, (_, i) => {
+                const page = start + i
+                return (
+                  <Button
+                    key={page}
+                    variant={page === currentPage ? 'default' : 'outline'}
+                    size="sm"
+                    className="h-8 w-8 p-0 text-xs"
+                    onClick={() => table.setPageIndex(page)}
+                  >
+                    {page + 1}
+                  </Button>
+                )
+              })
+            })()}
           </div>
           <Button
             variant="outline"

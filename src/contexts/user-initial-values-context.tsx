@@ -21,6 +21,7 @@ interface UserInitialValuesContextType {
   getValue: (key: string) => string | undefined
   getRecord: (key: string) => UserInitialValue | undefined
   saveValue: (key: string, value: string) => void
+  resetAll: () => Promise<void>
   isSaving: boolean
 }
 
@@ -95,6 +96,16 @@ export function UserInitialValuesProvider({ children }: { children: ReactNode })
     [saveMutation],
   )
 
+  const resetAll = useCallback(async () => {
+    // Delete every user_initial_value record for this user
+    const deletePromises = values.map((v) =>
+      axiosClient.delete(`${MODULE_API_PATH}/${v.id}`).catch(() => {})
+    )
+    await Promise.all(deletePromises)
+    queryClient.invalidateQueries({ queryKey: QUERY_KEY })
+    toast.success('All preferences reset to defaults')
+  }, [values, queryClient])
+
   return (
     <UserInitialValuesContext.Provider
       value={{
@@ -104,6 +115,7 @@ export function UserInitialValuesProvider({ children }: { children: ReactNode })
         getValue,
         getRecord,
         saveValue,
+        resetAll,
         isSaving: saveMutation.isPending,
       }}
     >

@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { usePersistedPageSize } from '@/hooks/use-persisted-page-size'
 import { createFileRoute } from '@tanstack/react-router'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { DataTable } from '@/components/data-table'
@@ -31,6 +32,91 @@ function CreditNoteStatusBadge({ status }: { status: string }) {
     <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${s.color}`}>
       {s.label}
     </span>
+  )
+}
+
+function CreditNotesDataTable({ notes, isLoading }: { notes: CreditNote[]; isLoading: boolean }) {
+  const [pageSize] = usePersistedPageSize()
+
+  const columns: ColumnDef<CreditNote>[] = [
+    {
+      header: 'Credit Note No', accessorKey: 'creditNoteNo',
+      cell: ({ row }) => <span className="font-medium">{row.original.creditNoteNo || '—'}</span>,
+    },
+    {
+      header: 'Rider', accessorKey: 'rider.name',
+      cell: ({ row }) => (
+        <div className="flex flex-col">
+          <span className="font-medium">{row.original.rider?.name || 'N/A'}</span>
+          {row.original.rider?.code && (
+            <span className="text-xs text-muted-foreground">{row.original.rider.code}</span>
+          )}
+        </div>
+      ),
+    },
+    {
+      header: 'Source Voucher', accessorKey: 'sourceFee.fee_no',
+      cell: ({ row }) => {
+        const fee = row.original.sourceFee
+        return fee?.fee_no
+          ? (
+            <div className="flex flex-col">
+              <span className="text-sm">{fee.fee_no}</span>
+              <span className="text-xs text-muted-foreground">{fee.fee_date || ''}</span>
+            </div>
+          )
+          : '—'
+      },
+    },
+    {
+      header: 'Date', accessorKey: 'createdAt',
+      cell: ({ row }) => {
+        const d = row.original.createdAt
+        return d ? new Date(d).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'
+      },
+    },
+    {
+      header: 'Amount', accessorKey: 'amount',
+      cell: ({ row }) => <span className="font-medium tabular-nums">{formatAmount(row.original.amount)}</span>,
+    },
+    {
+      header: 'Used', accessorKey: 'usedAmount',
+      cell: ({ row }) => <span className="text-emerald-600 dark:text-emerald-400 tabular-nums">{formatAmount(row.original.usedAmount)}</span>,
+    },
+    {
+      header: 'Balance', accessorKey: 'balance',
+      cell: ({ row }) => (
+        <span className={`font-medium tabular-nums ${row.original.balance > 0 ? 'text-amber-600 dark:text-amber-400' : 'text-muted-foreground'}`}>
+          {formatAmount(row.original.balance)}
+        </span>
+      ),
+    },
+    {
+      header: 'Status', accessorKey: 'status',
+      cell: ({ row }) => <CreditNoteStatusBadge status={row.original.status} />,
+    },
+    {
+      header: 'Note', accessorKey: 'note',
+      cell: ({ getValue }) => { const v = getValue<string>(); return v ? (v.length > 30 ? v.slice(0, 30) + '...' : v) : '—' },
+    },
+  ]
+
+  return (
+    <DataTable
+      columns={columns}
+      data={notes}
+      loading={isLoading}
+      searchKey="creditNoteNo"
+      initialPageSize={pageSize}
+      filterableColumns={[
+        { id: 'status', type: 'select', options: [
+          { label: 'Open', value: 'open' },
+          { label: 'Partial', value: 'partial' },
+          { label: 'Used', value: 'used' },
+        ] },
+        'note',
+      ] as FilterableColumnConfig[]}
+    />
   )
 }
 
@@ -156,20 +242,7 @@ function CreditNotesPage() {
           </Button>
         </div>
       ) : (
-        <DataTable
-          columns={columns}
-          data={notes || []}
-          loading={isLoading}
-          searchKey="creditNoteNo"
-          filterableColumns={[
-            { id: 'status', type: 'select', options: [
-              { label: 'Open', value: 'open' },
-              { label: 'Partial', value: 'partial' },
-              { label: 'Used', value: 'used' },
-            ] },
-            'note',
-          ] as FilterableColumnConfig[]}
-        />
+        <CreditNotesDataTable notes={notes || []} isLoading={isLoading} />
       )}
 
       <div className="flex items-start gap-2 rounded-md border border-muted bg-muted/30 p-3 text-xs text-muted-foreground">

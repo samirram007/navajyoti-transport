@@ -1,5 +1,8 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useSearch, useNavigate } from '@tanstack/react-router'
+import { usePersistedPageSize } from '@/hooks/use-persisted-page-size'
+import { usePersistedSortDir } from '@/hooks/use-persisted-sort-dir'
 import axiosClient from '@/lib/axios-client'
 import { DataTable, type FilterableColumnConfig } from '@/components/data-table'
 import { Button } from '@/components/ui/button'
@@ -39,6 +42,7 @@ interface ResourcePageProps {
   filterableColumns?: FilterableColumnConfig[]
   schema?: ZodSchema
   inlineForm?: boolean
+  rowNameAccessor?: string
   onAddNew?: () => void
   onEditItem?: (id: number) => void
 }
@@ -65,7 +69,7 @@ function useRelationOptions(field: Field) {
   })
 }
 
-export function ResourcePage({ title, endpoint, queryKey, fields, columns, searchKey = 'name', filterableColumns, schema, inlineForm = true, onAddNew, onEditItem }: ResourcePageProps) {
+export function ResourcePage({ title, endpoint, queryKey, fields, columns, searchKey = 'name', filterableColumns, schema, inlineForm = true, rowNameAccessor, onAddNew, onEditItem }: ResourcePageProps) {
   const [editing, setEditing] = useState<any>(null)
   const [form, setForm] = useState<Record<string, any>>({})
   const [errors, setErrors] = useState<Record<string, string>>({})
@@ -85,12 +89,81 @@ export function ResourcePage({ title, endpoint, queryKey, fields, columns, searc
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // Server-side pagination/search/sort state
-  const [page, setPage] = useState(0)
-  const [pageSize, setPageSize] = useState(10)
-  const [search, setSearch] = useState('')
-  const [sorting, setSorting] = useState<SortingState>([])
-  const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([])
+  // ── Read state from URL search params ──
+  const urlSearch = useSearch({ strict: false })
+  const navigate = useNavigate()
+  const [page, setPage] = useState(Math.max(0, (urlSearch.page ?? 1) - 1))
+  const [pageSize, setPageSize] = usePersistedPageSize()
+  const [search, setSearch] = useState(urlSearch.search ?? '')
+  const [defaultSortDir, setDefaultSortDir] = usePersistedSortDir(queryKey)
+  const [sorting, setSorting] = useState<SortingState>(() => {
+    if (urlSearch.sort) return [{ id: urlSearch.sort as string, desc: (urlSearch.dir ?? defaultSortDir) === 'desc' }]
+    return []
+  })
+  const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>(() => {
+    if (urlSearch.filters) {
+      try { return JSON.parse(urlSearch.filters as string) } catch { /* ignore */ }
+    }
+    return []
+  })
+
+  // ── Sync state from URL on every navigation (back/forward) ──
+  useEffect(() => {
+    setPage(Math.max(0, (urlSearch.page ?? 1) - 1))
+  }, [urlSearch.page])
+  useEffect(() => {
+    setSearch(urlSearch.search ?? '')
+  }, [urlSearch.search])
+  useEffect(() => {
+    if (urlSearch.sort) {
+      setSorting([{ id: urlSearch.sort as string, desc: (urlSearch.dir ?? defaultSortDir) === 'desc' }])
+    } else {
+      setSorting([])
+    }
+  }, [urlSearch.sort, urlSearch.dir, defaultSortDir])
+  useEffect(() => {
+    if (urlSearch.filters) {
+      try { setColumnFilters(JSON.parse(urlSearch.filters as string)) } catch { setColumnFilters([]) }
+    } else {
+      setColumnFilters([])
+    }
+  }, [urlSearch.filters])
+
+  // ── Sync state changes back to URL ──
+  // Skip the first few syncToUrl calls during mount — TanStack Table fires
+  // onPaginationChange/onSortingChange with default values that would strip URL
+  // params like ?page=4 that were present on the initial navigation.
+  const initialSyncDone = useRef(false)
+  useEffect(() => {
+    // Mark as ready after the first full render cycle
+    requestAnimationFrame(() => { initialSyncDone.current = true })
+  }, [])
+
+  const syncToUrl = useCallback((overrides?: { page?: number; size?: number; sort?: string; dir?: string; search?: string; filters?: string }, replace = false) => {
+    if (!initialSyncDone.current) return
+    const p = overrides?.page ?? page
+    const s = overrides?.size ?? pageSize
+    const sort = overrides?.sort ?? (sorting.length > 0 ? sorting[0].id : '')
+    const dir = overrides?.dir ?? (sorting.length > 0 ? (sorting[0].desc ? 'desc' : 'asc') : 'desc')
+    const searchVal = overrides?.search ?? search
+    const filtersStr = overrides?.filters ?? (columnFilters.length > 0 ? JSON.stringify(columnFilters) : '')
+    const clean: Record<string, any> = {}
+    if (p > 0) clean.page = p + 1
+    if (s !== 10) clean.size = s
+    if (sort) clean.sort = sort
+    if (dir !== 'desc') clean.dir = dir
+    if (searchVal) clean.search = searchVal
+    if (filtersStr) clean.filters = filtersStr
+    // Skip navigation if the generated URL matches the current one
+    const currentParams = new URLSearchParams(window.location.search)
+    const cleanParams = new URLSearchParams()
+    for (const [k, v] of Object.entries(clean)) {
+      cleanParams.set(k, String(v))
+    }
+    if (currentParams.toString() === cleanParams.toString()) return
+    navigate({ search: clean as any, replace })
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [page, pageSize, sorting, search, columnFilters, navigate])
 
   const { data, isLoading } = useQuery({
     queryKey: [queryKey, { page, pageSize, search, sorting: sorting.map(s => ({ id: s.id, desc: s.desc })), columnFilters }],
@@ -380,25 +453,39 @@ export function ResourcePage({ title, endpoint, queryKey, fields, columns, searc
             filterableColumns={filterableColumns}
             loading={isLoading}
             onRowClick={handleRowClick}
+            rowNameAccessor={rowNameAccessor}
+            initialPageSize={pageSize}
             // Server-side pagination/search/sort
             serverSide
-            pageCount={data?.pagination?.last_page || 0}
-            total={data?.pagination?.total || 0}
+            pageIndex={page}
+            pageSize={pageSize}
+            pageCount={data?.pagination?.last_page ?? data?.meta?.last_page ?? 0}
+            total={data?.pagination?.total ?? data?.meta?.total ?? 0}
             onPaginationChange={(pageIdx, size) => {
               setPage(pageIdx)
-              setPageSize(size)
+              if (size !== pageSize) setPageSize(size)
+              syncToUrl({ page: pageIdx, size }, false)
             }}
             onSortingChange={(newSorting) => {
               setSorting(newSorting)
               setPage(0)
+              const dir = newSorting.length > 0 ? (newSorting[0].desc ? 'desc' as const : 'asc' as const) : defaultSortDir
+              setDefaultSortDir(dir)
+              syncToUrl({
+                sort: newSorting.length > 0 ? newSorting[0].id : '',
+                dir,
+                page: 0,
+              }, false)
             }}
             onGlobalFilterChange={(value) => {
               setSearch(value)
               setPage(0)
+              syncToUrl({ search: value, page: 0 }, false)
             }}
             onColumnFiltersChange={(filters) => {
               setColumnFilters(filters)
               setPage(0)
+              syncToUrl({ filters: filters.length > 0 ? JSON.stringify(filters) : '', page: 0 }, false)
             }}
           />
         </div>

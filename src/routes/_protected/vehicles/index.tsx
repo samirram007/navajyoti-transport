@@ -1,10 +1,15 @@
 /* oxlint-disable react/only-export-components */
 import { createFileRoute } from '@tanstack/react-router'
+import { z } from 'zod'
 import { ResourcePage, type Field } from '@/components/resource-page'
 import { VehicleSchema } from '@/features/vehicles/schemas'
 import { type ColumnDef } from '@tanstack/react-table'
+import { paginationSearchSchema } from '@/lib/search-schemas'
 
 export const Route = createFileRoute('/_protected/vehicles/')({
+  validateSearch: paginationSearchSchema.extend({
+    filters: z.string().optional(),
+  }),
   component: VehiclesPage,
 })
 

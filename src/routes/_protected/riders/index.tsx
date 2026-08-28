@@ -1,12 +1,17 @@
 /* oxlint-disable react/only-export-components */
+import { useState, useEffect, useRef } from 'react'
 import { createFileRoute, Link } from '@tanstack/react-router'
+import { z } from 'zod'
+import { paginationSearchSchema } from '@/lib/search-schemas'
 import { ResourcePage, type Field } from '@/components/resource-page'
 import { type FilterableColumnConfig } from '@/components/data-table'
 import { RiderSchema } from '@/features/riders/schemas'
 import { type ColumnDef } from '@tanstack/react-table'
 import { cn } from '@/lib/utils'
-import { Clock, Plus } from 'lucide-react'
+import { Clock, Plus, Eye } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip'
+import { RiderFeeSummaryDialog } from '@/features/fees/components/rider-fee-summary-dialog'
 
 const RIDER_TYPE_STYLES: Record<string, string> = {
   student: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
@@ -21,10 +26,13 @@ const STATUS_STYLES: Record<string, string> = {
 }
 
 export const Route = createFileRoute('/_protected/riders/')({
+  validateSearch: paginationSearchSchema.extend({
+    filters: z.string().optional(),
+  }),
   component: RidersPage,
 })
 
-const columns: ColumnDef<any>[] = [
+const columns: ColumnDef<any, any>[] = [
   {
     header: 'Name', accessorKey: 'name',
     cell: ({ row }) => (
@@ -38,6 +46,26 @@ const columns: ColumnDef<any>[] = [
           </Link>
         </Button>
       </div>
+    ),
+  },
+  {
+    id: 'feeSummary',
+    header: '',
+    cell: ({ row }) => (
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <button
+            className="inline-flex items-center justify-center h-6 w-6 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+            onClick={(e) => {
+              e.stopPropagation()
+              window.dispatchEvent(new CustomEvent('open-rider-fee-summary', { detail: { id: row.original.id, name: row.original.name } }))
+            }}
+          >
+            <Eye className="h-3.5 w-3.5" />
+          </button>
+        </TooltipTrigger>
+        <TooltipContent>Fee summary for {row.original.name}</TooltipContent>
+      </Tooltip>
     ),
   },
   { header: 'Code', accessorKey: 'code' },
@@ -105,20 +133,77 @@ const fields: Field[] = [
 ]
 
 function RidersPage() {
-  return <ResourcePage title="Riders" endpoint="riders" queryKey="riders" fields={fields} columns={columns} schema={RiderSchema} filterableColumns={[
-    'code',
-    'standard',
-    'section',
-    'rollNo',
-    { id: 'riderType', type: 'select', options: [
-      { label: 'Student', value: 'student' },
-      { label: 'Staff', value: 'staff' },
-      { label: 'Other', value: 'other' },
-    ] },
-    { id: 'status', type: 'select', options: [
-      { label: 'Active', value: 'active' },
-      { label: 'Inactive', value: 'inactive' },
-      { label: 'Suspended', value: 'suspended' },
-    ] },
-  ] as FilterableColumnConfig[]} />
+  const [feeSummaryOpen, setFeeSummaryOpen] = useState(false)
+  const [selectedRider, setSelectedRider] = useState<{ id: number; name: string } | null>(null)
+
+  return (
+    <>
+      <ResourcePage title="Riders" endpoint="riders" queryKey="riders" fields={fields} columns={columns} schema={RiderSchema} rowNameAccessor="name" filterableColumns={[
+        'code',
+        'standard',
+        'section',
+        'rollNo',
+        { id: 'riderType', type: 'select', options: [
+          { label: 'Student', value: 'student' },
+          { label: 'Staff', value: 'staff' },
+          { label: 'Other', value: 'other' },
+        ] },
+        { id: 'status', type: 'select', options: [
+          { label: 'Active', value: 'active' },
+          { label: 'Inactive', value: 'inactive' },
+          { label: 'Suspended', value: 'suspended' },
+        ] },
+      ] as FilterableColumnConfig[]} />
+
+      {/* Fee Summary Dialog */}
+      <FeeSummaryListener
+        onOpen={(id, name) => { setSelectedRider({ id, name }); setFeeSummaryOpen(true) }}
+      />
+      {selectedRider && (
+        <RiderFeeSummaryDialog
+          open={feeSummaryOpen}
+          onOpenChange={setFeeSummaryOpen}
+          riderId={selectedRider.id}
+          riderName={selectedRider.name}
+        />
+      )}
+    </>
+  )
+}
+
+/**
+ * Listens for the custom DOM event dispatched by the eye button in the table.
+ * This bridges the static columns definition with React state.
+ */
+function FeeSummaryListener({ onOpen }: { onOpen: (id: number, name: string) => void }) {
+  const onOpenRef = useRef(onOpen)
+  onOpenRef.current = onOpen
+
+  useEffect(() => {
+    // Custom event from eye button
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent).detail
+      if (detail?.id && detail?.name) onOpenRef.current(detail.id, detail.name)
+    }
+    window.addEventListener('open-rider-fee-summary', handler)
+
+    // Ctrl+E keyboard shortcut — opens fee summary for hovered row
+    const keyHandler = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'e') {
+        const hovered = document.querySelector<HTMLElement>('tr:hover[data-row-id]')
+        if (hovered) {
+          const id = Number(hovered.dataset.rowId)
+          const name = hovered.dataset.rowName || ''
+          if (id) onOpenRef.current(id, name)
+        }
+      }
+    }
+    window.addEventListener('keydown', keyHandler)
+
+    return () => {
+      window.removeEventListener('open-rider-fee-summary', handler)
+      window.removeEventListener('keydown', keyHandler)
+    }
+  }, [])
+  return null
 }

@@ -624,7 +624,7 @@ export function FeesPosPage({ editFee, initialRiderId }: { editFee?: any; initia
     setPaymentDetails({})
   }
 
-  const goBack = () => { navigate({ to: '/fees' }) }
+  const goBack = () => { window.history.back() }
 
   // Cancelled vouchers are write-off records — they must not be edited.
   if (editing?.isDeleted) {

@@ -7,9 +7,9 @@ import { SearchableSelect } from '@/components/ui/searchable-select'
 import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import {
-  Calendar, Wallet, LayoutGrid, List, CheckCircle2,
+import { Calendar, Wallet, LayoutGrid, List, CheckCircle2,
   Building2, Tags, AlertCircle, Loader2, type LucideIcon, ChevronRight,
+  Table, Clock, Sliders, ArrowUpDown, Trash2, LayoutList,
 } from 'lucide-react'
 import { useNavigate } from '@tanstack/react-router'
 import { YearSwitchForm } from '@/features/user-initial-values/year-switch-form'
@@ -70,7 +70,7 @@ const PREFERENCE_DEFINITIONS: PreferenceOption[] = [
 
 export function PreferencesPage() {
   const navigate = useNavigate()
-  const { getValue, saveValue, isSaving } = useUserInitialValues()
+  const { getValue, saveValue, isSaving, resetAll, getRecord } = useUserInitialValues()
 
   // Fetch relation options for dynamic selects
   const { data: feeHeads = [], isLoading: feeHeadsLoading, isError: feeHeadsError } = useQuery({
@@ -251,6 +251,89 @@ export function PreferencesPage() {
         })}
       </div>
 
+      {/* Automatically Saved Preferences */}
+      <div className="max-w-2xl">
+        <div className="flex items-center gap-2 mb-3">
+          <Sliders className="h-4 w-4 text-muted-foreground" />
+          <h3 className="text-sm font-semibold text-muted-foreground">Saved Automatically</h3>
+        </div>
+        <p className="text-xs text-muted-foreground mb-3">
+          These preferences are saved as you use the app and persist across sessions.
+        </p>
+        <div className="grid gap-2">
+          <AutoSavedRow
+            icon={Table}
+            label="Table Page Size"
+            value={getValue('dataTablePageSize') || '10 (default)'}
+            description="Rows per page in data tables"
+            updatedAt={getRecord('dataTablePageSize')?.updated_at}
+          />
+          <AutoSavedRow
+            icon={Calendar}
+            label="Reporting Period"
+            value={(() => {
+              const from = getValue('reportingFrom')
+              const to = getValue('reportingTo')
+              if (from && to) return `${from} — ${to}`
+              if (from) return `From ${from}`
+              if (to) return `Until ${to}`
+              return 'Using fiscal year default'
+            })()}
+            description="Date range for reports"
+            updatedAt={getRecord('reportingFrom')?.updated_at || getRecord('reportingTo')?.updated_at}
+          />
+          <AutoSavedRow
+            icon={Calendar}
+            label="Selected Fiscal Year"
+            value={(() => {
+              const fyId = getValue('fiscalYearId')
+              return fyId ? `FY #${fyId}` : 'None selected'
+            })()}
+            description="Active fiscal year in the navbar"
+            updatedAt={getRecord('fiscalYearId')?.updated_at}
+          />
+          <AutoSavedRow
+            icon={Wallet}
+            label="Default Payment Mode"
+            value={getValue('paymentMode') || 'Not set'}
+            description="Pre-selected payment method"
+            updatedAt={getRecord('paymentMode')?.updated_at}
+          />
+          {['fees', 'riders', 'vehicles', 'expenses'].map((page) => {
+            const dir = getValue(`sortDir_${page}`)
+            if (!dir) return null
+            const pageLabel = page.charAt(0).toUpperCase() + page.slice(1)
+            return (
+              <AutoSavedRow
+                key={page}
+                icon={ArrowUpDown}
+                label={`${pageLabel} — Sort Direction`}
+                value={dir === 'asc' ? 'Ascending (A→Z, 1→9)' : 'Descending (Z→A, 9→1)'}
+                description={`Default sort direction for the ${pageLabel} page`}
+                updatedAt={getRecord(`sortDir_${page}`)?.updated_at}
+              />
+            )
+          })}
+          <AutoSavedRow
+            icon={LayoutList}
+            label="Fee Summary — Default Tab"
+            value={(() => {
+              const tab = getValue('feeSummaryTab')
+              return tab === 'vouchers' ? 'Fee Vouchers' : 'Monthly Breakdown'
+            })()}
+            description="Tab shown when opening the fee summary dialog"
+            updatedAt={getRecord('feeSummaryTab')?.updated_at}
+          />
+          <AutoSavedRow
+            icon={LayoutGrid}
+            label="Fee Summary — View Mode"
+            value={getValue('feeSummaryShowAll') === 'true' ? 'Show All' : 'Paginated'}
+            description="Fee list display mode in the summary dialog"
+            updatedAt={getRecord('feeSummaryShowAll')?.updated_at}
+          />
+        </div>
+      </div>
+
       {/* Quick Actions */}
       <Separator className="max-w-2xl" />
       <div className="max-w-2xl">
@@ -267,6 +350,74 @@ export function PreferencesPage() {
             <ChevronRight className="h-3 w-3" />
           </Button>
         </div>
+      </div>
+
+      {/* Danger Zone */}
+      <Separator className="max-w-2xl" />
+      <div className="max-w-2xl">
+        <h3 className="text-sm font-semibold text-destructive mb-3">Danger Zone</h3>
+        <div className="rounded-lg border border-destructive/20 bg-destructive/5 p-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium">Reset All Preferences</p>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Clear all saved preferences including fiscal year, payment mode, page size, sort directions, and reporting period. This cannot be undone.
+              </p>
+            </div>
+            <Button
+              variant="destructive"
+              size="sm"
+              className="gap-1.5 shrink-0"
+              onClick={() => {
+                if (confirm('Reset all preferences to defaults? This cannot be undone.')) {
+                  resetAll()
+                }
+              }}
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+              Reset All
+            </Button>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function timeAgo(dateStr: string): string {
+  const now = Date.now()
+  const then = new Date(dateStr).getTime()
+  const diff = Math.floor((now - then) / 1000)
+  if (diff < 60) return 'just now'
+  if (diff < 3600) return `${Math.floor(diff / 60)}m ago`
+  if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`
+  if (diff < 604800) return `${Math.floor(diff / 86400)}d ago`
+  return new Date(dateStr).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
+}
+
+function AutoSavedRow({ icon: Icon, label, value, description, updatedAt }: {
+  icon: LucideIcon
+  label: string
+  value: string
+  description: string
+  updatedAt?: string
+}) {
+  return (
+    <div className="flex items-center gap-3 rounded-lg border bg-muted/30 px-4 py-3">
+      <div className="flex items-center justify-center w-8 h-8 rounded-md bg-muted shrink-0">
+        <Icon className="h-4 w-4 text-muted-foreground" />
+      </div>
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2">
+          <span className="text-xs font-medium">{label}</span>
+          <span className="text-xs text-muted-foreground truncate">{value}</span>
+        </div>
+        <p className="text-[10px] text-muted-foreground/70 mt-0.5">
+          {description}
+          {updatedAt && (
+            <span className="ml-1.5 text-muted-foreground/50">· saved {timeAgo(updatedAt)}</span>
+          )}
+        </p>
       </div>
     </div>
   )

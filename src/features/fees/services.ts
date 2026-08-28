@@ -1,8 +1,28 @@
 import axiosClient from '@/lib/axios-client'
 
-export async function getFeesApi() {
-  const res = await axiosClient.get('/fees')
-  return res.data.data || []
+export interface FeesQueryParams {
+  page?: number
+  per_page?: number
+  search?: string
+  sort_by?: string
+  sort_dir?: 'asc' | 'desc'
+  filter_rider_id?: number | string
+  filter_fiscal_year_id?: number | string
+  filter_payment_mode?: string
+  filter_is_deleted?: string
+  filter_fee_date_from?: string
+  filter_fee_date_to?: string
+}
+
+export async function getFeesApi(params?: FeesQueryParams) {
+  const res = await axiosClient.get('/fees', { params })
+  return {
+    data: res.data.data || [],
+    total: res.data.meta?.total ?? 0,
+    perPage: res.data.meta?.per_page ?? 10,
+    currentPage: res.data.meta?.current_page ?? 1,
+    lastPage: res.data.meta?.last_page ?? 1,
+  }
 }
 
 export async function createFeeApi(payload: any) {
