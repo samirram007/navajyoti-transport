@@ -4,18 +4,21 @@ import { z } from 'zod'
  * Base search schema for paginated list routes.
  *
  * Shared across all list pages so pagination / sort / search params are
- * validated consistently. The `page` param uses a transform to coerce
- * invalid values (empty string, NaN, zero, negative) to `undefined`
- * so that the component defaults to page 1 instead of throwing a
- * SearchParamError that breaks the route.
+ * validated consistently. The `page` param accepts both strings (from the
+ * URL) and numbers (from TanStack Router's re-validation on re-render)
+ * and silently drops invalid values (NaN, zero, negative) so the
+ * component can default to page 1 without a SearchParamError.
  */
 export const paginationSearchSchema = z.object({
-  page: z.string().optional().transform((val) => {
-    if (val === undefined || val === '') return undefined
-    const num = Number(val)
-    if (isNaN(num) || num < 1) return undefined
-    return num
-  }),
+  page: z
+    .union([z.string(), z.number()])
+    .optional()
+    .transform((val) => {
+      if (val === undefined || val === '') return undefined
+      const num = typeof val === 'string' ? Number(val) : val
+      if (isNaN(num) || num < 1) return undefined
+      return num
+    }),
   size: z.coerce.number().optional(),
   sort: z.string().optional(),
   dir: z.enum(['asc', 'desc']).optional(),
