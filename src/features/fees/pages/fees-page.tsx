@@ -18,6 +18,7 @@ import { useUserInitialValues } from '@/contexts/user-initial-values-context'
 import { useReportingPeriod } from '@/hooks/use-reporting-period'
 import { CancelVoucherDialog } from '@/features/fees/components/cancel-voucher-dialog'
 import { RiderFeeSummaryDialog } from '@/features/fees/components/rider-fee-summary-dialog'
+import { PrintPreviewDialog } from '@/components/print-preview-dialog'
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
 
@@ -37,78 +38,89 @@ function getFeeStatus(fee: any): string {
   return ''
 }
 
-function printReceipt(data: {
+function buildReceiptHtml(data: {
   feeNo?: string
   date: string
   riderName?: string
   riderStd?: string
   riderSection?: string
-  items: { name?: string; qty: number; amount: number; total: number }[]
+  items: { name?: string; months?: string; qty: number; amount: number; total: number }[]
   totalAmount: number
   paidAmount: number
   balanceAmount: number
   paymentMode: string
   note?: string
 }) {
-  const receiptHTML = `
-<!DOCTYPE html><html><head><meta charset="utf-8"><title>Receipt</title>
+  return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Fee Receipt</title>
 <style>
-  @page { margin: 0; size: 80mm auto; }
-  body { font-family: 'Courier New', monospace; font-size: 12px; margin: 0; padding: 10px; color: #222; }
-  .receipt { max-width: 72mm; margin: 0 auto; }
-  .center { text-align: center; }
-  .header { border-bottom: 1px dashed #222; padding-bottom: 8px; margin-bottom: 8px; }
-  .header h2 { margin: 0; font-size: 16px; letter-spacing: 1px; }
-  .header p { margin: 2px 0; font-size: 10px; color: #555; }
-  .meta { display: flex; justify-content: space-between; font-size: 11px; margin-bottom: 6px; }
-  .items { width: 100%; border-collapse: collapse; margin-bottom: 6px; }
-  .items th { border-bottom: 1px dashed #222; padding: 4px 2px; font-size: 10px; text-align: left; }
-  .items th:last-child, .items td:last-child { text-align: right; }
-  .items td { padding: 3px 2px; font-size: 11px; }
-  .total-row td { border-top: 1px dashed #222; padding-top: 4px; font-weight: bold; }
-  .amount { text-align: right; }
-  .paid { color: #16a34a; }
-  .balance { color: ${data.balanceAmount > 0 ? '#dc2626' : '#16a34a'}; }
-  .footer { border-top: 1px dashed #222; padding-top: 6px; margin-top: 6px; font-size: 10px; text-align: center; color: #555; }
-  .note { font-size: 10px; color: #555; margin-top: 4px; font-style: italic; }
-  hr { border: none; border-top: 1px dashed #222; margin: 6px 0; }
+@page{size:A5 landscape;margin:10mm}
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{width:100%;height:100%}
+body{font-family:'Segoe UI',Helvetica,Arial,sans-serif;color:#000;background:#fff}
+.page{width:100%;height:100%;display:flex;flex-direction:column;padding:8px 12px}
+.hdr{display:flex;justify-content:space-between;align-items:flex-end;padding-bottom:10px;margin-bottom:10px;border-bottom:2px solid #000}
+.hdr-left h1{font-size:24pt;font-weight:900;letter-spacing:3px;line-height:1}
+.hdr-left p{font-size:9pt;color:#555;margin-top:4px}
+.hdr-right{text-align:right}
+.hdr-right .title{font-size:14pt;font-weight:700;letter-spacing:1px}
+.hdr-right .date{font-size:10pt;color:#555;margin-top:2px}
+.info{display:flex;margin-bottom:12px;border:1px solid #000}
+.info-block{flex:1;padding:8px 12px;border-right:1px solid #000}
+.info-block:last-child{border-right:none}
+.info-label{font-size:7pt;color:#555;text-transform:uppercase;letter-spacing:1px;margin-bottom:2px;font-weight:600}
+.info-value{font-size:12pt;font-weight:700}
+.table-section{flex:1;display:flex;flex-direction:column;border-top:2px solid #000}
+table{width:100%;border-collapse:collapse}
+thead th{background:#000;color:#fff;padding:8px 12px;font-size:9pt;font-weight:600;text-align:left;text-transform:uppercase;letter-spacing:0.5px}
+thead th.r{text-align:right}
+thead th.c{text-align:center}
+tbody td{padding:10px 12px;font-size:11pt;border-bottom:1px solid #ccc;vertical-align:top}
+tbody td.r{text-align:right;font-variant-numeric:tabular-nums}
+tbody td.c{text-align:center}
+tbody tr:last-child td{border-bottom:none}
+.bottom{display:flex;gap:20px;border-top:2px solid #000;padding-top:10px;margin-top:auto}
+.summary{flex:1}
+.srow{display:flex;justify-content:space-between;padding:4px 0;font-size:11pt}
+.srow.total{font-size:14pt;font-weight:900;border-bottom:2px solid #000;padding-bottom:8px;margin-bottom:4px}
+.srow.paid{font-weight:700}
+.srow.balance{font-weight:800;font-size:12pt}
+.payinfo{flex:1;display:flex;flex-direction:column;justify-content:center;border:1px solid #000;padding:12px 16px}
+.payinfo strong{font-size:9pt;text-transform:uppercase;letter-spacing:1px}
+.payinfo .mode{font-size:14pt;font-weight:800;margin-top:4px}
+.note{border-left:3px solid #000;padding:8px 12px;font-size:9pt;color:#333;font-style:italic;margin-top:10px}
+.ftr{text-align:center;font-size:8pt;color:#555;padding-top:8px;border-top:1px solid #000;margin-top:10px}
 </style></head><body>
-<div class="receipt">
-  <div class="header center">
-    <h2>GoSchool</h2>
-    <p>Transport Management • Fee Receipt</p>
+<div class="page">
+  <div class="hdr">
+    <div class="hdr-left"><h1>GOSCHOOL</h1><p>Transport Management System</p></div>
+    <div class="hdr-right"><div class="title">FEE RECEIPT</div><div class="date">${data.date}</div></div>
   </div>
-  <div class="meta">
-    <span><strong>Receipt:</strong> ${data.feeNo || '---'}</span>
-    <span><strong>Date:</strong> ${data.date}</span>
+  <div class="info">
+    <div class="info-block"><div class="info-label">Receipt No</div><div class="info-value">${data.feeNo || '---'}</div></div>
+    <div class="info-block"><div class="info-label">Rider Name</div><div class="info-value">${data.riderName || '---'}</div></div>
+    <div class="info-block"><div class="info-label">Class / Section</div><div class="info-value">${data.riderStd || '-'}${data.riderSection ? ' / ' + data.riderSection : ''}</div></div>
+    <div class="info-block"><div class="info-label">Payment</div><div class="info-value">${data.paymentMode.replace(/_/g, ' ').toUpperCase()}</div></div>
   </div>
-  <div class="meta">
-    <span><strong>Rider:</strong> ${data.riderName || '---'}</span>
-    <span>${data.riderStd || ''}${data.riderSection ? ' - ' + data.riderSection : ''}</span>
+  <div class="table-section">
+    <table>
+      <thead><tr><th>Description</th><th class="c">Qty</th><th class="r">Rate</th><th class="r">Amount</th></tr></thead>
+      <tbody>
+        ${data.items.map(i => `<tr><td>${i.name || 'Fee'}${i.months ? `<div style="font-size:8pt;color:#555;margin-top:2px">${i.months}</div>` : ''}</td><td class="c">${i.qty}</td><td class="r">${i.amount.toLocaleString()}</td><td class="r">${i.total.toLocaleString()}</td></tr>`).join('')}
+      </tbody>
+    </table>
   </div>
-  <hr>
-  <table class="items">
-    <tr><th>Item</th><th>Qty</th><th>Amt</th><th>Total</th></tr>
-    ${data.items.map(i => `
-      <tr><td>${i.name || 'Fee'}</td><td>${i.qty}</td><td>${i.amount.toLocaleString()}</td><td>${i.total.toLocaleString()}</td></tr>
-    `).join('')}
-    <tr class="total-row"><td colspan="3">Total</td><td>${data.totalAmount.toLocaleString()}</td></tr>
-    <tr><td colspan="3" class="paid">Paid</td><td class="paid">${data.paidAmount.toLocaleString()}</td></tr>
-    <tr><td colspan="3" class="balance">Balance</td><td class="balance">${data.balanceAmount.toLocaleString()}</td></tr>
-  </table>
-  <div class="meta"><span><strong>Payment:</strong> ${data.paymentMode.toUpperCase()}</span></div>
-  ${data.note ? `<div class="note">Note: ${data.note}</div>` : ''}
-  <div class="footer">Thank you! • ${new Date().toLocaleString()}</div>
+  <div class="bottom">
+    <div class="summary">
+      <div class="srow total"><span>TOTAL</span><span>\u20B9${data.totalAmount.toLocaleString()}</span></div>
+      <div class="srow paid"><span>PAID</span><span>\u20B9${data.paidAmount.toLocaleString()}</span></div>
+      <div class="srow balance"><span>BALANCE</span><span>\u20B9${data.balanceAmount.toLocaleString()}</span></div>
+    </div>
+    <div class="payinfo"><strong>Payment</strong><div class="mode">${data.paymentMode.replace(/_/g, ' ').toUpperCase()}</div></div>
+  </div>
+  ${data.note ? `<div class="note"><strong>Note:</strong> ${data.note}</div>` : ''}
+  <div class="ftr">GoSchool Transport Management \u2022 Thank you for your payment! \u2022 ${new Date().toLocaleDateString('en-IN',{day:'2-digit',month:'long',year:'numeric'})}</div>
 </div>
-<script>window.onload = function() { window.print(); window.close(); }</script>
 </body></html>`
-  const win = window.open('', '_blank', 'width=400,height=600,menubar=no,toolbar=no,location=no')
-  if (win) {
-    win.document.write(receiptHTML)
-    win.document.close()
-  } else {
-    toast.error('Please allow popups to print the receipt')
-  }
 }
 
 export function FeesPage() {
@@ -254,6 +266,8 @@ export function FeesPage() {
   const [cancelFee, setCancelFee] = useState<any>(null)
   const [feeSummaryOpen, setFeeSummaryOpen] = useState(false)
   const [selectedRider, setSelectedRider] = useState<{ id: number; name: string } | null>(null)
+  const [printPreviewOpen, setPrintPreviewOpen] = useState(false)
+  const [printPreviewHtml, setPrintPreviewHtml] = useState('')
 
   // Ctrl+E keyboard shortcut — open fee summary for hovered row
   const openFeeSummaryRef = useRef<(id: number, name: string) => void>(() => {})
@@ -409,7 +423,7 @@ export function FeesPage() {
             variant="ghost" size="icon" className="h-7 w-7"
             onClick={() => {
               const fee = row.original
-              printReceipt({
+              setPrintPreviewHtml(buildReceiptHtml({
                 feeNo: fee.feeNo,
                 date: fee.feeDate?.slice(0, 10) || '',
                 riderName: fee.rider?.name,
@@ -417,6 +431,14 @@ export function FeesPage() {
                 riderSection: fee.rider?.section,
                 items: (fee.feeItems || []).map((i: any) => ({
                   name: i.feeHead?.name || 'Fee',
+                  months: (i.feeItemMonths || []).map((m: any) => ({
+                    num: m.month?.number || 0,
+                    label: (() => {
+                      const name = m.month?.shortName || m.month?.name || '';
+                      const fyYear = fee.fiscalYear?.startDate ? new Date(fee.fiscalYear.startDate).getFullYear() : '';
+                      return name && fyYear ? `${name} ${String(fyYear).slice(-2)}` : name;
+                    })(),
+                  })).filter((m: any) => m.label).sort((a: any, b: any) => a.num - b.num).map((m: any) => m.label).join(', '),
                   qty: i.quantity,
                   amount: i.amount,
                   total: i.totalAmount,
@@ -426,7 +448,8 @@ export function FeesPage() {
                 balanceAmount: Number(fee.balanceAmount) || 0,
                 paymentMode: fee.paymentMode || '',
                 note: fee.note,
-              })
+              }))
+              setPrintPreviewOpen(true)
             }}
           >
             <Printer className="h-3 w-3" />
@@ -534,6 +557,12 @@ export function FeesPage() {
           riderName={selectedRider.name}
         />
       )}
+
+      <PrintPreviewDialog
+        open={printPreviewOpen}
+        onOpenChange={setPrintPreviewOpen}
+        html={printPreviewHtml}
+      />
     </div>
   )
 }
