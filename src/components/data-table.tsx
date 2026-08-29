@@ -141,17 +141,19 @@ export function DataTable<TData, TValue>({
     }
   }
 
+  // Skip pagination events fired during the initial mount — TanStack Table
+  // fires onPaginationChange with default {pageIndex:0, pageSize:10} before
+  // the controlled state is applied, which would strip URL params like ?page=4.
+  // We use useEffect to clear the flag after mount so that user clicks are
+  // never swallowed.
   const paginationInitRef = useRef(true)
+  useEffect(() => {
+    requestAnimationFrame(() => { paginationInitRef.current = false })
+  }, [])
   const handlePaginationChange = (updater: any) => {
     const newValue = typeof updater === 'function' ? updater(effectivePagination) : updater
     setPagination(newValue)
-    // Skip the initial call from TanStack Table during mount — it fires with
-    // the default {pageIndex:0, pageSize:10} before the controlled state is applied,
-    // which would strip URL search params like ?page=4.
-    if (paginationInitRef.current) {
-      paginationInitRef.current = false
-      return
-    }
+    if (paginationInitRef.current) return
     if (serverSide && (newValue.pageIndex !== effectivePagination.pageIndex || newValue.pageSize !== effectivePagination.pageSize)) {
       onPaginationChange?.(newValue.pageIndex, newValue.pageSize)
     }
@@ -409,8 +411,7 @@ export function DataTable<TData, TValue>({
         <div className="flex items-center gap-2">
           <Button
             variant="outline"
-            size="sm"
-            className="h-8 text-xs"
+            className="h-10 px-4 text-sm font-medium"
             onClick={() => table.setPageIndex(0)}
             disabled={!table.getCanPreviousPage()}
           >
@@ -418,14 +419,13 @@ export function DataTable<TData, TValue>({
           </Button>
           <Button
             variant="outline"
-            size="sm"
-            className="h-8 w-8 p-0"
+            className="h-10 w-10 p-0"
             onClick={() => table.previousPage()}
             disabled={!table.getCanPreviousPage()}
           >
-            <ChevronLeft className="h-4 w-4" />
+            <ChevronLeft className="h-5 w-5" />
           </Button>
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-2">
             {(() => {
               const currentPage = table.getState().pagination.pageIndex
               const totalPages = table.getPageCount()
@@ -438,8 +438,12 @@ export function DataTable<TData, TValue>({
                   <Button
                     key={page}
                     variant={page === currentPage ? 'default' : 'outline'}
-                    size="sm"
-                    className="h-8 w-8 p-0 text-xs"
+                    className={cn(
+                      'h-10 w-10 p-0 text-base font-medium',
+                      page === currentPage
+                        ? 'shadow-sm'
+                        : 'hover:bg-accent hover:text-accent-foreground'
+                    )}
                     onClick={() => table.setPageIndex(page)}
                   >
                     {page + 1}
@@ -450,17 +454,15 @@ export function DataTable<TData, TValue>({
           </div>
           <Button
             variant="outline"
-            size="sm"
-            className="h-8 w-8 p-0"
+            className="h-10 w-10 p-0"
             onClick={() => table.nextPage()}
             disabled={!table.getCanNextPage()}
           >
-            <ChevronRight className="h-4 w-4" />
+            <ChevronRight className="h-5 w-5" />
           </Button>
           <Button
             variant="outline"
-            size="sm"
-            className="h-8 text-xs"
+            className="h-10 px-4 text-sm font-medium"
             onClick={() => table.setPageIndex(table.getPageCount() - 1)}
             disabled={!table.getCanNextPage()}
           >

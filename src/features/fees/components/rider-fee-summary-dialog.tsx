@@ -38,32 +38,32 @@ function getFeeStatus(fee: any): string {
 const STATUS_CONFIG: Record<string, { label: string; color: string; icon: typeof BadgeCheck }> = {
   Paid: {
     label: 'Paid',
-    color: 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400',
+    color: 'bg-green-100 !text-emerald-800 dark:bg-green-900/30 dark:!text-green-400',
     icon: BadgeCheck,
   },
   Unpaid: {
     label: 'Unpaid',
-    color: 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400',
+    color: 'bg-red-100 !text-red-800 dark:bg-red-900/30 dark:!text-red-400',
     icon: Ban,
   },
   Partial: {
     label: 'Partial',
-    color: 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400',
+    color: 'bg-amber-100 !text-amber-800 dark:bg-amber-900/30 dark:!text-amber-400',
     icon: Minus,
   },
   Cancelled: {
     label: 'Cancelled',
-    color: 'bg-slate-200 text-slate-700 dark:bg-slate-700 dark:text-slate-200',
+    color: 'bg-slate-200 !text-slate-700 dark:bg-slate-700 dark:!text-slate-200',
     icon: Ban,
   },
 }
 
 const PAYMENT_MODE_STYLES: Record<string, { label: string; color: string; barColor: string }> = {
-  cash:         { label: 'Cash',          color: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400',   barColor: 'bg-emerald-500 dark:bg-emerald-400' },
-  bank_transfer:{ label: 'Bank Transfer', color: 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400',             barColor: 'bg-blue-500 dark:bg-blue-400' },
-  cheque:       { label: 'Cheque',        color: 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400',        barColor: 'bg-amber-500 dark:bg-amber-400' },
-  card:         { label: 'Card',           color: 'bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-400',      barColor: 'bg-purple-500 dark:bg-purple-400' },
-  online:       { label: 'Online',         color: 'bg-indigo-100 text-indigo-800 dark:bg-indigo-900/30 dark:text-indigo-400',      barColor: 'bg-indigo-500 dark:bg-indigo-400' },
+  cash:         { label: 'Cash',          color: 'bg-emerald-100 !text-emerald-800 dark:bg-emerald-900/30 dark:!text-emerald-400',   barColor: 'bg-emerald-500 dark:bg-emerald-400' },
+  bank_transfer:{ label: 'Bank Transfer', color: 'bg-blue-100 !text-blue-800 dark:bg-blue-900/30 dark:!text-blue-400',             barColor: 'bg-blue-500 dark:bg-blue-400' },
+  cheque:       { label: 'Cheque',        color: 'bg-amber-100 !text-amber-800 dark:bg-amber-900/30 dark:!text-amber-400',        barColor: 'bg-amber-500 dark:bg-amber-400' },
+  card:         { label: 'Card',           color: 'bg-purple-100 !text-purple-800 dark:bg-purple-900/30 dark:!text-purple-400',      barColor: 'bg-purple-500 dark:bg-purple-400' },
+  online:       { label: 'Online',         color: 'bg-indigo-100 !text-indigo-800 dark:bg-indigo-900/30 dark:!text-indigo-400',      barColor: 'bg-indigo-500 dark:bg-indigo-400' },
 }
 
 const MONTH_NAMES = [
@@ -298,7 +298,7 @@ export function RiderFeeSummaryDialog({
 
     const modeEntries: PaymentBreakdownItem[] = Object.entries(modeMap)
       .map(([mode, data]) => {
-        const style = PAYMENT_MODE_STYLES[mode] || { label: mode.replace(/_/g, ' '), color: 'bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-300', barColor: 'bg-gray-500 dark:bg-gray-400' }
+        const style = PAYMENT_MODE_STYLES[mode] || { label: mode.replace(/_/g, ' '), color: 'bg-gray-100 !text-gray-800 dark:bg-gray-800 dark:!text-gray-300', barColor: 'bg-gray-500 dark:bg-gray-400' }
         return { mode, label: style.label, color: style.color, barColor: style.barColor, ...data, percentage: 0 }
       })
       .sort((a, b) => b.totalPaid - a.totalPaid)
@@ -950,7 +950,7 @@ export function RiderFeeSummaryDialog({
                               <td className="py-2 px-3 text-center">
                                 {(() => {
                                   const mode = fee.paymentMode?.toLowerCase()
-                                  const modeStyle = mode ? (PAYMENT_MODE_STYLES[mode] || { label: fee.paymentMode, color: 'bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-300' }) : null
+                                  const modeStyle = mode ? (PAYMENT_MODE_STYLES[mode] || { label: fee.paymentMode, color: 'bg-gray-100 !text-gray-800 dark:bg-gray-800 dark:!text-gray-300' }) : null
                                   return modeStyle ? (
                                     <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium ${modeStyle.color}`}>
                                       {modeStyle.label}

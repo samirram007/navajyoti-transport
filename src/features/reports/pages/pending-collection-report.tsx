@@ -41,11 +41,11 @@ function StatCard({ label, value, icon: Icon, color, subtitle }: {
 // ─── Status Badge ────────────────────────────────────────────────────────
 function PendingStatusBadge({ status }: { status: string }) {
   const styles: Record<string, { label: string; color: string }> = {
-    paid: { label: 'Paid', color: 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400' },
-    partial: { label: 'Partial', color: 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400' },
-    unpaid: { label: 'Unpaid', color: 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400' },
+    paid: { label: 'Paid', color: 'bg-green-100 !text-emerald-800 dark:bg-green-900/30 dark:!text-green-400' },
+    partial: { label: 'Partial', color: 'bg-amber-100 !text-amber-800 dark:bg-amber-900/30 dark:!text-amber-400' },
+    unpaid: { label: 'Unpaid', color: 'bg-red-100 !text-red-800 dark:bg-red-900/30 dark:!text-red-400' },
   }
-  const s = styles[status?.toLowerCase()] || { label: status, color: 'bg-gray-100 text-gray-800' }
+  const s = styles[status?.toLowerCase()] || { label: status, color: 'bg-gray-100 !text-gray-800' }
   return (
     <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${s.color}`}>
       {s.label}
