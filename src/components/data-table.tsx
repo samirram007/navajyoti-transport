@@ -50,6 +50,8 @@ interface DataTableProps<TData, TValue> {
   onSortingChange?: (sorting: SortingState) => void
   onGlobalFilterChange?: (value: string) => void
   onColumnFiltersChange?: (filters: ColumnFiltersState) => void
+  /** Controlled column filters (server-side mode) */
+  columnFilters?: ColumnFiltersState
 }
 
 export function DataTable<TData, TValue>({
@@ -70,10 +72,14 @@ export function DataTable<TData, TValue>({
   onSortingChange,
   onGlobalFilterChange,
   onColumnFiltersChange,
+  columnFilters: columnFiltersProp,
 }: DataTableProps<TData, TValue>) {
   const [sorting, setSorting] = useState<SortingState>([])
-  const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([])
+  const [columnFiltersLocal, setColumnFiltersLocal] = useState<ColumnFiltersState>([])
   const [globalFilter, setGlobalFilter] = useState('')
+
+  // Use controlled columnFilters in server-side mode
+  const columnFilters = (serverSide && columnFiltersProp !== undefined) ? columnFiltersProp : columnFiltersLocal
   const [showFilters, setShowFilters] = useState(false)
   const [pagination, setPagination] = useState<PaginationState>({ pageIndex: 0, pageSize: initialPageSize })
 
@@ -130,7 +136,7 @@ export function DataTable<TData, TValue>({
   const columnFiltersInitRef = useRef(true)
   const handleColumnFiltersChange = (updater: any) => {
     const newValue = typeof updater === 'function' ? updater(columnFilters) : updater
-    setColumnFilters(newValue)
+    setColumnFiltersLocal(newValue)
     if (columnFiltersInitRef.current) {
       columnFiltersInitRef.current = false
       return
@@ -253,7 +259,11 @@ export function DataTable<TData, TValue>({
             size="sm"
             className="h-8 text-xs text-muted-foreground"
             onClick={() => {
-              setColumnFilters([])
+              if (serverSide) {
+                onColumnFiltersChange?.([])
+                onGlobalFilterChange?.('')
+              }
+              setColumnFiltersLocal([])
               setGlobalFilter('')
             }}
           >
@@ -373,7 +383,7 @@ export function DataTable<TData, TValue>({
                       <button
                         className="text-xs text-primary hover:underline mt-1"
                         onClick={() => {
-                          setColumnFilters([])
+                          setColumnFiltersLocal([])
                           setGlobalFilter('')
                         }}
                       >
