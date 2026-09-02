@@ -129,3 +129,83 @@ export async function downloadReportCsv(
   document.body.removeChild(a)
   window.URL.revokeObjectURL(url)
 }
+
+/**
+ * Download a report as XLSX using fetch (includes auth headers).
+ */
+export async function downloadReportXlsx(
+  reportType: 'pending-collection',
+  filters: ReportFilters = {}
+): Promise<void> {
+  const params = new URLSearchParams()
+  if (filters.from) params.set('from', filters.from)
+  if (filters.to) params.set('to', filters.to)
+  if (filters.fiscal_year_id) params.set('fiscal_year_id', String(filters.fiscal_year_id))
+  if (filters.month_id) params.set('month_id', String(filters.month_id))
+  if (filters.school_id) params.set('school_id', String(filters.school_id))
+  if (filters.search) params.set('search', filters.search)
+
+  const baseUrl = axiosClient.defaults.baseURL || ''
+  const token = localStorage.getItem('access_token')
+
+  const response = await fetch(`${baseUrl}/reports/${reportType}/xlsx?${params.toString()}`, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+      Accept: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    },
+  })
+
+  if (!response.ok) {
+    throw new Error(`Failed to download XLSX: ${response.status} ${response.statusText}`)
+  }
+
+  const blob = await response.blob()
+  const url = window.URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `${reportType}-report.xlsx`
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
+  window.URL.revokeObjectURL(url)
+}
+
+/**
+ * Download a report as PDF using fetch (includes auth headers).
+ */
+export async function downloadReportPdf(
+  reportType: 'pending-collection',
+  filters: ReportFilters = {}
+): Promise<void> {
+  const params = new URLSearchParams()
+  if (filters.from) params.set('from', filters.from)
+  if (filters.to) params.set('to', filters.to)
+  if (filters.fiscal_year_id) params.set('fiscal_year_id', String(filters.fiscal_year_id))
+  if (filters.month_id) params.set('month_id', String(filters.month_id))
+  if (filters.school_id) params.set('school_id', String(filters.school_id))
+  if (filters.search) params.set('search', filters.search)
+
+  const baseUrl = axiosClient.defaults.baseURL || ''
+  const token = localStorage.getItem('access_token')
+
+  const response = await fetch(`${baseUrl}/reports/${reportType}/pdf?${params.toString()}`, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+      Accept: 'application/pdf',
+    },
+  })
+
+  if (!response.ok) {
+    throw new Error(`Failed to download PDF: ${response.status} ${response.statusText}`)
+  }
+
+  const blob = await response.blob()
+  const url = window.URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `${reportType}-report.pdf`
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
+  window.URL.revokeObjectURL(url)
+}

@@ -13,7 +13,7 @@ const fields: Field[] = [
   { key: 'capacity', label: 'Capacity', type: 'number', icon: '📦' },
   { key: 'startTime', label: 'Start Time', icon: '⏰' },
   { key: 'endTime', label: 'End Time', icon: '⏰' },
-  { key: 'isActive', label: 'Active', type: 'select', options: [{ label: 'Yes', value: 1 }, { label: 'No', value: 0 }], icon: '✅' },
+  { key: 'isActive', label: 'Active', type: 'switch', icon: '✅' },
 ]
 function SlotsPage() { return <ResourcePage title="Slots" endpoint="slots" queryKey="slots" fields={fields} columns={columns} schema={SlotSchema} filterableColumns={[
     { id: 'slotType', type: 'select', options: [

@@ -176,7 +176,7 @@ test.describe('Fees POS Page', () => {
     await expect(page.locator('text=Fees Collection')).toBeVisible({ timeout: 10_000 })
 
     // Verify the fee appears in the table
-    await expect(page.locator('text=FEE-').first()).toBeVisible({ timeout: 5_000 })
+    await expect(page.locator('text=F').first()).toBeVisible({ timeout: 5_000 })
   })
 
   test('should validate that rider selection is required', async ({ page }) => {

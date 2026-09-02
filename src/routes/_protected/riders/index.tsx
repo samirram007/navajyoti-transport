@@ -8,10 +8,11 @@ import { type FilterableColumnConfig } from '@/components/data-table'
 import { RiderSchema } from '@/features/riders/schemas'
 import { type ColumnDef } from '@tanstack/react-table'
 import { cn } from '@/lib/utils'
-import { Clock, Plus, Eye } from 'lucide-react'
+import { Clock, Plus, Eye, Users } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip'
 import { RiderFeeSummaryDialog } from '@/features/fees/components/rider-fee-summary-dialog'
+import { ManageRidersDialog } from '@/features/riders/components/manage-riders-dialog'
 
 const RIDER_TYPE_STYLES: Record<string, string> = {
   student: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
@@ -23,6 +24,8 @@ const STATUS_STYLES: Record<string, string> = {
   active: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400',
   inactive: 'bg-gray-100 text-gray-600 dark:bg-gray-800/50 dark:text-gray-400',
   suspended: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',
+  permanent: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',
+  withdrawn: 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400',
 }
 
 export const Route = createFileRoute('/_protected/riders/')({
@@ -107,6 +110,13 @@ const columns: ColumnDef<any, any>[] = [
 ]
 
 const fields: Field[] = [
+  { key: 'status', label: 'Status', icon: '📊', type: 'select', options: [{ label: 'Active', value: 'active' }, { label: 'Inactive', value: 'inactive' }, { label: 'Suspended', value: 'suspended' }, { label: 'Permanent', value: 'permanent' }, { label: 'Withdrawn', value: 'withdrawn' }], defaultValue: 'active',
+    onChange: (v, setForm) => setForm(prev => ({
+      ...prev,
+      isActive: v !== 'inactive' && v !== 'withdrawn',
+      dissociateDate: (v === 'withdrawn' && !prev.dissociateDate) ? new Date().toISOString().slice(0, 10) : prev.dissociateDate,
+    })),
+  },
   { key: 'name', label: 'Name', icon: '👤', required: true },
   { key: 'contactNo', label: 'Contact No', icon: '📞' },
   { key: 'email', label: 'Email', icon: '✉️' },
@@ -114,10 +124,8 @@ const fields: Field[] = [
   { key: 'section', label: 'Section', icon: '🏷️' },
   { key: 'rollNo', label: 'Roll No', icon: '🔢' },
   { key: 'monthlyCharge', label: 'Monthly Charge', type: 'number', icon: '💰' },
+  { key: 'isFree', label: 'Free Transport', icon: '🆓', type: 'switch' },
   { key: 'riderType', label: 'Rider Type', icon: '👤', type: 'select', options: [{ label: 'Student', value: 'student' }, { label: 'Staff', value: 'staff' }, { label: 'Other', value: 'other' }] },
-  { key: 'status', label: 'Status', icon: '📊', type: 'select', options: [{ label: 'Active', value: 'active' }, { label: 'Inactive', value: 'inactive' }, { label: 'Suspended', value: 'suspended' }] },
-  { key: 'isActive', label: 'Active', icon: '✅', type: 'select', options: [{ label: 'Yes', value: 'true' }, { label: 'No', value: 'false' }], transform: (v) => v === true || v === 1 || v === 'true' },
-  { key: 'isFree', label: 'Free Transport', icon: '🆓', type: 'select', options: [{ label: 'No', value: 'false' }, { label: 'Yes', value: 'true' }], transform: (v) => v === true || v === 1 || v === 'true' },
   { key: 'joinDate', label: 'Join Date', type: 'date', icon: '📅' },
   { key: 'dissociateDate', label: 'Dissociate Date', type: 'date', icon: '📅' },
   { key: 'emergencyContactNo', label: 'Emergency Contact', icon: '🆘' },
@@ -134,26 +142,30 @@ const fields: Field[] = [
 
 function RidersPage() {
   const [feeSummaryOpen, setFeeSummaryOpen] = useState(false)
+  const [manageOpen, setManageOpen] = useState(false)
   const [selectedRider, setSelectedRider] = useState<{ id: number; name: string } | null>(null)
 
   return (
-    <>
-      <ResourcePage title="Riders" endpoint="riders" queryKey="riders" fields={fields} columns={columns} schema={RiderSchema} rowNameAccessor="name" filterableColumns={[
+    <>      <ResourcePage title="Riders" endpoint="riders" queryKey="riders" fields={fields} columns={columns} schema={RiderSchema} rowNameAccessor="name"
+        initialColumnFilters={[{ id: 'status', value: 'active' }]}
+        filterableColumns={[
         'code',
         'standard',
         'section',
         'rollNo',
         { id: 'riderType', type: 'select', options: [
-          { label: 'Student', value: 'student' },
-          { label: 'Staff', value: 'staff' },
-          { label: 'Other', value: 'other' },
+          { label: 'Student', value: 'student' }, { label: 'Staff', value: 'staff' }, { label: 'Other', value: 'other' },
+        ] },        { id: 'status', type: 'select', options: [
+          { label: 'Active', value: 'active' }, { label: 'Inactive', value: 'inactive' }, { label: 'Suspended', value: 'suspended' }, { label: 'Permanent', value: 'permanent' }, { label: 'Withdrawn', value: 'withdrawn' },
         ] },
-        { id: 'status', type: 'select', options: [
-          { label: 'Active', value: 'active' },
-          { label: 'Inactive', value: 'inactive' },
-          { label: 'Suspended', value: 'suspended' },
-        ] },
-      ] as FilterableColumnConfig[]} />
+      ] as FilterableColumnConfig[]}
+        headerActions={
+          <Button size="sm" variant="outline" className="h-8 text-xs gap-1" onClick={() => setManageOpen(true)}>
+            <Users className="h-3.5 w-3.5" />
+            Manage Riders
+          </Button>
+        }
+      />
 
       {/* Fee Summary Dialog */}
       <FeeSummaryListener
@@ -167,6 +179,12 @@ function RidersPage() {
           riderName={selectedRider.name}
         />
       )}
+
+      {/* Manage Riders Dialog */}
+      <ManageRidersDialog
+        open={manageOpen}
+        onOpenChange={setManageOpen}
+      />
     </>
   )
 }

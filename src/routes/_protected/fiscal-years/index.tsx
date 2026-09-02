@@ -15,8 +15,8 @@ const fields: Field[] = [
   { key: 'name', label: 'Name', icon: '📅' },
   { key: 'startDate', label: 'Start Date', type: 'date', icon: '📅' },
   { key: 'endDate', label: 'End Date', type: 'date', icon: '📅' },
-  { key: 'isCurrent', label: 'Current FY', icon: '⭐', type: 'select', options: [{ label: 'Yes', value: 1 }, { label: 'No', value: 0 }] },
-  { key: 'isActive', label: 'Active', icon: '✅', type: 'select', options: [{ label: 'Yes', value: 1 }, { label: 'No', value: 0 }] },
+  { key: 'isCurrent', label: 'Current FY', icon: '⭐', type: 'switch' },
+  { key: 'isActive', label: 'Active', icon: '✅', type: 'switch' },
   { key: 'previousFiscalYearId', label: 'Previous FY', icon: '⬅️', relation: { endpoint: 'fiscal_years', labelKey: 'name' } },
   { key: 'nextFiscalYearId', label: 'Next FY', icon: '➡️', relation: { endpoint: 'fiscal_years', labelKey: 'name' } },
 ]

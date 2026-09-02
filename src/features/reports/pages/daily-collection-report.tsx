@@ -1,5 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useQuery } from '@tanstack/react-query'
+import { useNavigate } from '@tanstack/react-router'
+import { Route } from '@/routes/_protected/reports/daily-collection'
 import { useReportingPeriod } from '@/hooks/use-reporting-period'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -60,23 +62,30 @@ function ReportSkeleton() {
 
 // ─── Main Page ──────────────────────────────────────────────────────────
 export function DailyCollectionReportPage() {
-  const [from, setFrom] = useState('')
-  const [to, setTo] = useState('')
-  const [appliedFrom, setAppliedFrom] = useState('')
-  const [appliedTo, setAppliedTo] = useState('')
+  const navigate = useNavigate({ from: '/reports/daily-collection' })
+  const search = Route.useSearch()
 
-  // Default the report to the user's global reporting period (FY start → today)
+  const [draftFrom, setDraftFrom] = useState('')
+  const [draftTo, setDraftTo] = useState('')
+  const [initialized, setInitialized] = useState(false)
+
   const { from: periodFrom, to: periodTo, isLoading: periodLoading } = useReportingPeriod()
-  const periodAppliedRef = useRef(false)
   useEffect(() => {
-    if (periodLoading || periodAppliedRef.current) return
-    periodAppliedRef.current = true
-    setFrom(periodFrom || '')
-    setTo(periodTo || '')
-    setAppliedFrom(periodFrom || '')
-    setAppliedTo(periodTo || '')
+    if (periodLoading || initialized) return
+    setInitialized(true)
+    if (!search.from && !search.to) {
+      navigate({ search: { from: periodFrom || undefined, to: periodTo || undefined }, replace: true })
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [periodLoading, periodFrom, periodTo])
+  }, [periodLoading, periodFrom, periodTo, initialized])
+
+  useEffect(() => {
+    setDraftFrom(search.from || '')
+    setDraftTo(search.to || '')
+  }, [search.from, search.to])
+
+  const appliedFrom = search.from || ''
+  const appliedTo = search.to || ''
 
   const { data, isLoading, isError, error, refetch, isFetching } = useQuery({
     queryKey: ['daily-collection-report', appliedFrom, appliedTo],
@@ -85,8 +94,7 @@ export function DailyCollectionReportPage() {
   })
 
   const handleApply = () => {
-    setAppliedFrom(from)
-    setAppliedTo(to)
+    navigate({ search: { from: draftFrom || undefined, to: draftTo || undefined }, replace: true })
   }
 
   const handleCsvExport = async () => {
@@ -157,8 +165,8 @@ export function DailyCollectionReportPage() {
                 <label className="text-xs font-medium text-muted-foreground">From Date</label>
                 <Input
                   type="date"
-                  value={from}
-                  onChange={(e) => setFrom(e.target.value)}
+                  value={draftFrom}
+                  onChange={(e) => setDraftFrom(e.target.value)}
                   className="h-9 w-44"
                 />
               </div>
@@ -166,8 +174,8 @@ export function DailyCollectionReportPage() {
                 <label className="text-xs font-medium text-muted-foreground">To Date</label>
                 <Input
                   type="date"
-                  value={to}
-                  onChange={(e) => setTo(e.target.value)}
+                  value={draftTo}
+                  onChange={(e) => setDraftTo(e.target.value)}
                   className="h-9 w-44"
                 />
               </div>

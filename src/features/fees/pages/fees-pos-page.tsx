@@ -16,6 +16,7 @@ import {
 import {
   createFeeApi, updateFeeApi, deleteFeeApi, getFeeHeadsApi, getFiscalYearsApi, getMonthsApi,
   searchRidersForFeesApi, getRiderApi, getRiderPaidMonthsApi, getRiderSnapshotsApi, getRiderCreditApi,
+  getOrganizationApi,
 } from '@/features/fees/services'
 import { FeeCreateSchema } from '@/features/fees/schemas'
 import { CancelVoucherDialog } from '@/features/fees/components/cancel-voucher-dialog'
@@ -70,6 +71,18 @@ interface FeeItemRow {
   months: { month_id: number; amount: number; is_waived: boolean }[]
 }
 
+const MONTHS_SHORT = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC']
+
+function formatReceiptDate(dateStr: string): string {
+  if (!dateStr) return ''
+  const d = new Date(dateStr)
+  if (isNaN(d.getTime())) return dateStr
+  const dd = String(d.getDate()).padStart(2, '0')
+  const mmm = MONTHS_SHORT[d.getMonth()]
+  const yyyy = d.getFullYear()
+  return `${dd}-${mmm}-${yyyy}`
+}
+
 function computeOptedCount(items: FeeItemRow[]): Record<number, number> {
   const map: Record<number, number> = {}
   items.forEach(fi => {
@@ -82,9 +95,11 @@ function computeOptedCount(items: FeeItemRow[]): Record<number, number> {
 
 function buildReceiptHtml(data: {
   feeNo?: string; date: string; riderName?: string; riderStd?: string; riderSection?: string
+  riderRollNo?: string; riderCode?: string; riderSchoolName?: string; riderSchoolTime?: string
   items: { name?: string; months?: string; qty: number; amount: number; total: number }[]
   totalAmount: number; paidAmount: number; balanceAmount: number; creditAmount?: number; paymentMode: string; note?: string
   paymentDetails?: Record<string, string>
+  orgName?: string; orgAddress?: string
 }) {
   const paymentDetailsHtml = data.paymentDetails && Object.keys(data.paymentDetails).length > 0
     ? Object.entries(data.paymentDetails)
@@ -93,33 +108,34 @@ function buildReceiptHtml(data: {
       .join('')
     : ''
 
-  return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Fee Receipt</title>
+  return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Money Receipt</title>
 <style>
 @page{size:A5 landscape;margin:10mm}
 *{margin:0;padding:0;box-sizing:border-box}
 html,body{width:100%;height:100%}
 body{font-family:'Segoe UI',Helvetica,Arial,sans-serif;color:#000;background:#fff}
-.page{width:100%;height:100%;display:flex;flex-direction:column;padding:8px 12px}
-.hdr{display:flex;justify-content:space-between;align-items:flex-end;padding-bottom:10px;margin-bottom:10px;border-bottom:2px solid #000}
-.hdr-left h1{font-size:24pt;font-weight:900;letter-spacing:3px;line-height:1}
-.hdr-left p{font-size:9pt;color:#555;margin-top:4px}
-.hdr-right{text-align:right}
-.hdr-right .title{font-size:14pt;font-weight:700;letter-spacing:1px}
-.hdr-right .date{font-size:10pt;color:#555;margin-top:2px}
-.info{display:flex;margin-bottom:12px;border:1px solid #000}
-.info-block{flex:1;padding:8px 12px;border-right:1px solid #000}
-.info-block:last-child{border-right:none}
-.info-label{font-size:7pt;color:#555;text-transform:uppercase;letter-spacing:1px;margin-bottom:2px;font-weight:600}
-.info-value{font-size:12pt;font-weight:700}
-.table-section{flex:1;display:flex;flex-direction:column;border-top:2px solid #000}
+.page{width:100%;min-height:100%;display:flex;flex-direction:column;padding:12px 16px}
+.receipt-num{font-size:11pt;font-weight:600;letter-spacing:0.5px}
+.date-line{text-align:right;font-size:10pt;color:#333;margin-top:-18px}
+.org-center{text-align:center;margin-top:16px;margin-bottom:4px}
+.org-center h1{font-size:18pt;font-weight:900;letter-spacing:2px;line-height:1.2}
+.org-center p{font-size:8pt;color:#444;margin-top:2px;max-width:420px;margin-left:auto;margin-right:auto}
+.receipt-title{text-align:center;font-size:13pt;font-weight:700;text-decoration:underline;margin:10px 0 12px 0;letter-spacing:1px}
+.rider-info{margin-bottom:12px;font-size:10pt;line-height:1.8;padding-left:8px}
+.rider-info .row{display:flex;flex-wrap:wrap;gap:0 24px}
+.rider-info .label{font-weight:400;color:#333}
+.rider-info .value{font-weight:700}
+.table-section{flex:1;border-top:1px solid #000;border-bottom:2px solid #000}
 table{width:100%;border-collapse:collapse}
-thead th{background:#000;color:#fff;padding:8px 12px;font-size:9pt;font-weight:600;text-align:left;text-transform:uppercase;letter-spacing:0.5px}
+thead th{background:#000;color:#fff;padding:6px 12px;font-size:9pt;font-weight:600;text-align:left;text-transform:uppercase;letter-spacing:0.5px}
 thead th.r{text-align:right}
-thead th.c{text-align:center}
-tbody td{padding:10px 12px;font-size:11pt;border-bottom:1px solid #ccc;vertical-align:top}
+tbody td{padding:8px 12px;font-size:10pt;border-bottom:1px solid #ddd;vertical-align:top}
 tbody td.r{text-align:right;font-variant-numeric:tabular-nums}
-tbody td.c{text-align:center}
 tbody tr:last-child td{border-bottom:none}
+.total-row td{font-weight:800;font-size:12pt;border-top:2px solid #000!important;border-bottom:none!important}
+.amount-words{margin-top:8px;font-size:9pt;color:#333;font-style:italic}
+.stamp-area{display:flex;justify-content:flex-end;margin-top:20px;min-height:80px}
+.stamp-circle{width:80px;height:80px;border:2px dashed #999;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:7pt;color:#999;text-align:center}
 .bottom{display:flex;gap:20px;border-top:2px solid #000;padding-top:10px;margin-top:auto}
 .summary{flex:1}
 .srow{display:flex;justify-content:space-between;padding:4px 0;font-size:11pt}
@@ -132,42 +148,60 @@ tbody tr:last-child td{border-bottom:none}
 .payinfo .mode{font-size:14pt;font-weight:800;margin-top:4px}
 .payinfo .details{font-size:9pt;color:#333;margin-top:6px;line-height:1.6}
 .note{border-left:3px solid #000;padding:8px 12px;font-size:9pt;color:#333;font-style:italic;margin-top:10px}
-.ftr{text-align:center;font-size:8pt;color:#555;padding-top:8px;border-top:1px solid #000;margin-top:10px}
+.ftr{text-align:center;font-size:8pt;color:#555;padding-top:8px;border-top:1px solid #000;margin-top:8px}
 </style></head><body>
 <div class="page">
-  <div class="hdr">
-    <div class="hdr-left"><h1>GOSCHOOL</h1><p>Transport Management System</p></div>
-    <div class="hdr-right"><div class="title">FEE RECEIPT</div><div class="date">${data.date}</div></div>
+  <div class="receipt-num">${data.feeNo || ''}</div>
+  <div class="date-line">Date: ${data.date}</div>
+  <div class="org-center">
+    <h1>${data.orgName || 'JAY MAA KALI SCHOOL BUS SERVICE'}</h1>
+    ${data.orgAddress ? `<p>${data.orgAddress}</p>` : ''}
   </div>
-  <div class="info">
-    <div class="info-block"><div class="info-label">Receipt No</div><div class="info-value">${data.feeNo || '---'}</div></div>
-    <div class="info-block"><div class="info-label">Rider Name</div><div class="info-value">${data.riderName || '---'}</div></div>
-    <div class="info-block"><div class="info-label">Class / Section</div><div class="info-value">${data.riderStd || '-'}${data.riderSection ? ' / ' + data.riderSection : ''}</div></div>
-    <div class="info-block"><div class="info-label">Payment</div><div class="info-value">${data.paymentMode.replace(/_/g, ' ').toUpperCase()}</div></div>
+  <div class="receipt-title">Money Receipt</div>
+  <div class="rider-info">
+    <div class="row">
+      <span><span class="label">Name: </span><span class="value">${data.riderName || '---'}</span></span>
+    </div>
+    <div class="row">
+      <span><span class="label">School: </span><span class="value">${data.riderSchoolName || '---'}</span></span>
+    </div>
+    <div class="row">
+      ${data.riderCode ? `<span><span class="label">Code: </span><span class="value">${data.riderCode}</span></span>` : ''}
+      ${data.riderStd ? `<span><span class="label">Class: </span><span class="value">${data.riderStd}</span></span>` : ''}
+      ${data.riderSection ? `<span><span class="label">Sec: </span><span class="value">${data.riderSection}</span></span>` : ''}
+      ${data.riderRollNo ? `<span><span class="label">RollNo: </span><span class="value">${data.riderRollNo}</span></span>` : ''}
+      ${data.riderSchoolTime ? `<span><span class="label">Time: </span><span class="value">${data.riderSchoolTime}</span></span>` : ''}
+    </div>
   </div>
   <div class="table-section">
     <table>
-      <thead><tr><th>Description</th><th class="c">Qty</th><th class="r">Rate</th><th class="r">Amount</th></tr></thead>
+      <thead><tr><th>Particulars</th><th class="r">Amount</th></tr></thead>
       <tbody>
-        ${data.items.map(i => `<tr><td>${i.name || 'Fee'}${i.months ? `<div style="font-size:8pt;color:#555;margin-top:2px">${i.months}</div>` : ''}</td><td class="c">${i.qty}</td><td class="r">${i.amount.toLocaleString()}</td><td class="r">${i.total.toLocaleString()}</td></tr>`).join('')}
+        ${data.items.map(i => `<tr><td>${i.name || 'Fee'}${i.months ? ` <span style="font-size:8pt;color:#555;border:1px solid #ccc;padding:1px 4px;border-radius:3px;margin-left:4px">${i.months}</span>` : ''}</td><td class="r">${i.total.toLocaleString()}</td></tr>`).join('')}
+        <tr class="total-row"><td style="text-align:right;font-weight:800">Total:</td><td class="r">${data.totalAmount.toLocaleString()}</td></tr>
       </tbody>
     </table>
   </div>
-  <div class="bottom">
-    <div class="summary">
-      <div class="srow total"><span>TOTAL</span><span>\u20B9${data.totalAmount.toLocaleString()}</span></div>
-      <div class="srow paid"><span>PAID</span><span>\u20B9${data.paidAmount.toLocaleString()}</span></div>
-      ${data.creditAmount ? `<div class="srow credit"><span>CREDIT APPLIED</span><span>\u20B9${data.creditAmount.toLocaleString()}</span></div>` : ''}
-      <div class="srow balance"><span>BALANCE</span><span>\u20B9${data.balanceAmount.toLocaleString()}</span></div>
-    </div>
-    <div class="payinfo">
-      <strong>Payment</strong>
-      <div class="mode">${data.paymentMode.replace(/_/g, ' ').toUpperCase()}</div>
-      ${paymentDetailsHtml ? `<div class="details">${paymentDetailsHtml}</div>` : ''}
-    </div>
+  <div class="amount-words">(in words) : ${(() => {
+    const num = data.totalAmount; if (num === 0) return 'Zero'
+    const ones = ['','One','Two','Three','Four','Five','Six','Seven','Eight','Nine','Ten','Eleven','Twelve','Thirteen','Fourteen','Fifteen','Sixteen','Seventeen','Eighteen','Nineteen']
+    const tens = ['','','Twenty','Thirty','Forty','Fifty','Sixty','Seventy','Eighty','Ninety']
+    const convert = (n: number): string => {
+      if (n < 20) return ones[n]; if (n < 100) return tens[Math.floor(n / 10)] + (n % 10 ? ' ' + ones[n % 10] : '')
+      if (n < 1000) return ones[Math.floor(n / 100)] + ' Hundred' + (n % 100 ? ' and ' + convert(n % 100) : '')
+      if (n < 100000) return convert(Math.floor(n / 1000)) + ' Thousand' + (n % 1000 ? ' ' + convert(n % 1000) : '')
+      if (n < 10000000) return convert(Math.floor(n / 100000)) + ' Lakh' + (n % 100000 ? ' ' + convert(n % 100000) : '')
+      return convert(Math.floor(n / 10000000)) + ' Crore' + (n % 10000000 ? ' ' + convert(n % 10000000) : '')
+    }
+    const intPart = Math.floor(num); const decPart = Math.round((num - intPart) * 100)
+    let result = convert(intPart) + ' Rupees'
+    if (decPart > 0) result += ' and ' + convert(decPart) + ' Paise'
+    return result + ' Only'
+  })()}</div>
+  <div class="stamp-area">
+    <div class="stamp-circle">Authorized<br/>Stamp</div>
   </div>
-  ${data.note ? `<div class="note"><strong>Note:</strong> ${data.note}</div>` : ''}
-  <div class="ftr">GoSchool Transport Management \u2022 Thank you for your payment! \u2022 ${new Date().toLocaleDateString('en-IN',{day:'2-digit',month:'long',year:'numeric'})}</div>
+  <div class="ftr">${data.orgName || 'School Bus Service'} \u2022 ${data.date}</div>
 </div>
 </body></html>`
 }
@@ -404,6 +438,13 @@ export function FeesPosPage({ editFee, initialRiderId }: { editFee?: any; initia
   const { data: feeHeads, isLoading: feeHeadsLoading, isError: feeHeadsError } = useQuery({ queryKey: ['fee_heads'], queryFn: getFeeHeadsApi })
   const { data: fiscalYears, isLoading: fiscalYearsLoading, isError: fiscalYearsError } = useQuery({ queryKey: ['fiscal_years'], queryFn: getFiscalYearsApi })
   const { data: months, isLoading: monthsLoading, isError: monthsError } = useQuery({ queryKey: ['months'], queryFn: getMonthsApi })
+
+  // Organization data for receipt
+  const { data: orgData } = useQuery({
+    queryKey: ['organization-for-receipt'],
+    queryFn: () => getOrganizationApi(),
+    staleTime: 5 * 60 * 1000,
+  })
 
   // Year context for the transport fee — used to make month selection act per year
   const selectedFy = (fiscalYears || []).find((fy: any) => fy.id === fiscalYearId)
@@ -707,10 +748,14 @@ export function FeesPosPage({ editFee, initialRiderId }: { editFee?: any; initia
                 if (!receipt) return
                 setPrintPreviewHtml(buildReceiptHtml({
                   feeNo: receipt.feeNo,
-                  date: receipt.feeDate || feeDate,
+                  date: formatReceiptDate(receipt.feeDate || feeDate),
                   riderName: activeRider?.name,
                   riderStd: activeRider?.standard,
                   riderSection: activeRider?.section,
+                  riderRollNo: activeRider?.rollNo,
+                  riderCode: activeRider?.code,
+                  riderSchoolName: activeRider?.school?.name,
+                  riderSchoolTime: activeRider?.schoolTime,
                   items: feeItems.map(i => {
                     const fyYear = selectedFy?.startDate ? new Date(selectedFy.startDate).getFullYear() : '';
                     return {
@@ -724,6 +769,10 @@ export function FeesPosPage({ editFee, initialRiderId }: { editFee?: any; initia
                   }),
                   totalAmount, paidAmount, balanceAmount,
                   creditAmount: effectiveCredit, paymentMode, note, paymentDetails,
+                  orgName: orgData?.name,
+                  orgAddress: orgData?.address
+                    ? [orgData.address.addressLine1, orgData.address.addressLine2, orgData.address.city, orgData.address.state, orgData.address.pincode, orgData.address.country].filter(Boolean).join(', ')
+                    : undefined,
                 }))
                 setPrintPreviewOpen(true)
               }}
@@ -1315,7 +1364,7 @@ export function FeesPosPage({ editFee, initialRiderId }: { editFee?: any; initia
                   <Button type="button" variant="outline" className="flex-1 h-11 text-sm gap-1.5"
                     onClick={() => navigate({ to: '/fees/new' })}>New Collection</Button>
                   <Button type="button" className="flex-1 h-11 text-sm gap-1.5"
-                    onClick={() => { if (lastReceipt) { const fyYear = selectedFy?.startDate ? new Date(selectedFy.startDate).getFullYear() : ''; setPrintPreviewHtml(buildReceiptHtml({ feeNo: lastReceipt.feeNo, date: lastReceipt.feeDate || feeDate, riderName: activeRider?.name, riderStd: activeRider?.standard, riderSection: activeRider?.section, items: feeItems.map(i => ({ name: i.fee_head_name, months: i.months.map(m => { const month = months?.find((mo: any) => mo.id === m.month_id); return { num: month?.number || 0, label: (() => { const name = month?.shortName || month?.name || ''; return name && fyYear ? `${name} ${String(fyYear).slice(-2)}` : name; })() }; }).filter((m: any) => m.label).sort((a: any, b: any) => a.num - b.num).map((m: any) => m.label).join(', '), qty: i.quantity, amount: i.amount, total: i.total_amount })), totalAmount, paidAmount, balanceAmount, creditAmount: effectiveCredit, paymentMode, note, paymentDetails })); setPrintPreviewOpen(true) } }}
+                    onClick={() => { if (lastReceipt) { const fyYear = selectedFy?.startDate ? new Date(selectedFy.startDate).getFullYear() : ''; setPrintPreviewHtml(buildReceiptHtml({ feeNo: lastReceipt.feeNo, date: formatReceiptDate(lastReceipt.feeDate || feeDate), riderName: activeRider?.name, riderStd: activeRider?.standard, riderSection: activeRider?.section, riderRollNo: activeRider?.rollNo, riderCode: activeRider?.code, riderSchoolName: activeRider?.school?.name, riderSchoolTime: activeRider?.schoolTime, items: feeItems.map(i => ({ name: i.fee_head_name, months: i.months.map(m => { const month = months?.find((mo: any) => mo.id === m.month_id); return { num: month?.number || 0, label: (() => { const name = month?.shortName || month?.name || ''; return name && fyYear ? `${name} ${String(fyYear).slice(-2)}` : name; })() }; }).filter((m: any) => m.label).sort((a: any, b: any) => a.num - b.num).map((m: any) => m.label).join(', '), qty: i.quantity, amount: i.amount, total: i.total_amount })), totalAmount, paidAmount, balanceAmount, creditAmount: effectiveCredit, paymentMode, note, paymentDetails, orgName: orgData?.name, orgAddress: orgData?.address ? [orgData.address.addressLine1, orgData.address.addressLine2, orgData.address.city, orgData.address.state, orgData.address.pincode, orgData.address.country].filter(Boolean).join(', ') : undefined })); setPrintPreviewOpen(true) } }}
                   ><Printer className="h-4 w-4" />Print Receipt</Button>
                 </div>
               </>

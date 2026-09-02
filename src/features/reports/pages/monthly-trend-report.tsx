@@ -1,5 +1,7 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
+import { useNavigate } from '@tanstack/react-router'
+import { Route } from '@/routes/_protected/reports/monthly-trend'
 import axiosClient from '@/lib/axios-client'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -92,11 +94,21 @@ function ReportSkeleton() {
 
 // ─── Main Page ──────────────────────────────────────────────────────────
 export function MonthlyTrendReportPage() {
-  const [selectedFyIds, setSelectedFyIds] = useState<string>('')
-  const [includeExpenses, setIncludeExpenses] = useState(true)
-  const [appliedFilters, setAppliedFilters] = useState<ReportFilters>({
-    include_expenses: true,
-  })
+  const navigate = useNavigate({ from: '/reports/monthly-trend' })
+  const search = Route.useSearch()
+
+  const [draftFyIds, setDraftFyIds] = useState<string>('')
+  const [draftIncludeExpenses, setDraftIncludeExpenses] = useState(true)
+
+  useEffect(() => {
+    setDraftFyIds(search.fiscal_year_ids || '')
+    setDraftIncludeExpenses(search.include_expenses !== undefined ? search.include_expenses : true)
+  }, [search.fiscal_year_ids, search.include_expenses])
+
+  const appliedFilters: ReportFilters = {
+    fiscal_year_ids: search.fiscal_year_ids || undefined,
+    include_expenses: search.include_expenses !== undefined ? search.include_expenses : true,
+  }
 
   const { data, isLoading, isError, error, refetch, isFetching } = useQuery({
     queryKey: ['monthly-trend-report', appliedFilters],
@@ -105,16 +117,13 @@ export function MonthlyTrendReportPage() {
   })
 
   const handleApplyFilters = () => {
-    setAppliedFilters({
-      fiscal_year_ids: selectedFyIds || undefined,
-      include_expenses: includeExpenses,
-    })
+    navigate({ search: { fiscal_year_ids: draftFyIds || undefined, include_expenses: draftIncludeExpenses }, replace: true })
   }
 
   const handleReset = () => {
-    setSelectedFyIds('')
-    setIncludeExpenses(true)
-    setAppliedFilters({ include_expenses: true })
+    setDraftFyIds('')
+    setDraftIncludeExpenses(true)
+    navigate({ search: { include_expenses: true }, replace: true })
   }
 
   const handleCsvExport = async () => {
@@ -131,13 +140,13 @@ export function MonthlyTrendReportPage() {
       data.years.forEach((year: YearTrend) => {
         const md = year.monthly_data.find(m => m.month === month)
         point[`income_${year.fiscal_year.id}`] = md ? md.income : 0
-        if (includeExpenses) {
+        if (appliedFilters.include_expenses) {
           point[`expenses_${year.fiscal_year.id}`] = md ? md.expenses : 0
         }
       })
       return point
     })
-  }, [data, includeExpenses])
+  }, [data, appliedFilters.include_expenses])
 
   if (isError) {
     return (
@@ -179,15 +188,15 @@ export function MonthlyTrendReportPage() {
               <div className="space-y-1">
                 <label className="text-xs font-medium text-muted-foreground">Fiscal Years</label>
                 <MultiFiscalYearSelect
-                  value={selectedFyIds}
-                  onChange={setSelectedFyIds}
+                  value={draftFyIds}
+                  onChange={setDraftFyIds}
                 />
               </div>
               <div className="space-y-1">
                 <label className="text-xs font-medium text-muted-foreground">Show Expenses</label>
                 <SearchableSelect
-                  value={String(includeExpenses)}
-                  onValueChange={(v) => setIncludeExpenses(v === 'true')}
+                  value={String(draftIncludeExpenses)}
+                  onValueChange={(v) => setDraftIncludeExpenses(v === 'true')}
                   options={[
                     { label: 'Include', value: 'true' },
                     { label: 'Hide', value: 'false' },
@@ -262,7 +271,7 @@ export function MonthlyTrendReportPage() {
                     <span className="text-muted-foreground">Year Total</span>
                     <div className="flex items-center gap-3">
                       <span className="text-emerald-600 font-medium">{formatCurrency(year.total_income)}</span>
-                      {includeExpenses && <span className="text-red-600 font-medium">{formatCurrency(year.total_expenses)}</span>}
+                      {appliedFilters.include_expenses && <span className="text-red-600 font-medium">{formatCurrency(year.total_expenses)}</span>}
                       <span className={`font-semibold ${year.net >= 0 ? 'text-blue-600' : 'text-red-600'}`}>{formatCurrency(year.net)}</span>
                     </div>
                   </div>
@@ -272,7 +281,7 @@ export function MonthlyTrendReportPage() {
                         <tr className="border-b text-muted-foreground">
                           <th className="text-left py-2 px-3 font-medium">Month</th>
                           <th className="text-right py-2 px-3 font-medium">Income</th>
-                          {includeExpenses && <th className="text-right py-2 px-3 font-medium">Expenses</th>}
+                          {appliedFilters.include_expenses && <th className="text-right py-2 px-3 font-medium">Expenses</th>}
                           <th className="text-center py-2 px-3 font-medium">#</th>
                         </tr>
                       </thead>
@@ -281,7 +290,7 @@ export function MonthlyTrendReportPage() {
                           <tr key={md.month} className="border-b last:border-0 hover:bg-muted/30">
                             <td className="py-1.5 px-3 font-medium">{getMonthYear(md.month)}</td>
                             <td className="py-1.5 px-3 text-right text-emerald-600 tabular-nums">{formatCurrency(md.income)}</td>
-                            {includeExpenses && <td className="py-1.5 px-3 text-right text-red-600 tabular-nums">{md.expenses > 0 ? formatCurrency(md.expenses) : '—'}</td>}
+                            {appliedFilters.include_expenses && <td className="py-1.5 px-3 text-right text-red-600 tabular-nums">{md.expenses > 0 ? formatCurrency(md.expenses) : '—'}</td>}
                             <td className="py-1.5 px-3 text-center text-muted-foreground tabular-nums">{md.income_count}</td>
                           </tr>
                         ))}

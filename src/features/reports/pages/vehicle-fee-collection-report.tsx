@@ -1,7 +1,10 @@
-import { useState, useMemo, useEffect, useRef } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
+import { useNavigate } from '@tanstack/react-router'
+import { Route } from '@/routes/_protected/reports/vehicle-fee-collection'
 import axiosClient from '@/lib/axios-client'
 import { useReportingPeriod } from '@/hooks/use-reporting-period'
+import { useUserInitialValues } from '@/contexts/user-initial-values-context'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -54,24 +57,31 @@ function ReportSkeleton() {
 
 // ─── Main Page ──────────────────────────────────────────────────────────
 export function VehicleFeeCollectionReportPage() {
-  const [filters, setFilters] = useState<ReportFilters>({
-    from: '',
-    to: '',
-    fiscal_year_id: undefined,
-    search: '',
-  })
-  const [appliedFilters, setAppliedFilters] = useState<ReportFilters>({})
+  const { getValue } = useUserInitialValues()
+  const savedFiscalYearId = getValue('fiscalYearId')
+  const defaultFyId = savedFiscalYearId ? Number(savedFiscalYearId) : undefined
 
-  // Default the report to the user's global reporting period (FY start → today)
+  const navigate = useNavigate({ from: '/reports/vehicle-fee-collection' })
+  const search = Route.useSearch()
+
+  const [draft, setDraft] = useState<ReportFilters>({})
+  const [initialized, setInitialized] = useState(false)
+
   const { from: periodFrom, to: periodTo, isLoading: periodLoading } = useReportingPeriod()
-  const periodAppliedRef = useRef(false)
   useEffect(() => {
-    if (periodLoading || periodAppliedRef.current) return
-    periodAppliedRef.current = true
-    setFilters(prev => ({ ...prev, from: periodFrom || '', to: periodTo || '' }))
-    setAppliedFilters(prev => ({ ...prev, from: periodFrom || undefined, to: periodTo || undefined }))
+    if (periodLoading || initialized) return
+    setInitialized(true)
+    if (!search.from && !search.to && !search.fiscal_year_id && !search.search) {
+      navigate({ search: { from: periodFrom || undefined, to: periodTo || undefined, fiscal_year_id: defaultFyId }, replace: true })
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [periodLoading, periodFrom, periodTo])
+  }, [periodLoading, periodFrom, periodTo, initialized])
+
+  useEffect(() => {
+    setDraft({ from: search.from || '', to: search.to || '', fiscal_year_id: search.fiscal_year_id, search: search.search || '' })
+  }, [search.from, search.to, search.fiscal_year_id, search.search])
+
+  const appliedFilters: ReportFilters = { from: search.from || undefined, to: search.to || undefined, fiscal_year_id: search.fiscal_year_id || undefined, search: search.search || undefined }
 
   const { data, isLoading, isError, error, refetch, isFetching } = useQuery({
     queryKey: ['vehicle-fee-collection-report', appliedFilters],
@@ -80,17 +90,12 @@ export function VehicleFeeCollectionReportPage() {
   })
 
   const handleApplyFilters = () => {
-    setAppliedFilters({
-      from: filters.from || undefined,
-      to: filters.to || undefined,
-      fiscal_year_id: filters.fiscal_year_id || undefined,
-      search: filters.search || undefined,
-    })
+    navigate({ search: { from: draft.from || undefined, to: draft.to || undefined, fiscal_year_id: draft.fiscal_year_id || undefined, search: draft.search || undefined }, replace: true })
   }
 
   const handleReset = () => {
-    setFilters({ from: periodFrom || '', to: periodTo || '', fiscal_year_id: undefined, search: '' })
-    setAppliedFilters({ from: periodFrom || undefined, to: periodTo || undefined })
+    setDraft({})
+    navigate({ search: { from: periodFrom || undefined, to: periodTo || undefined, fiscal_year_id: defaultFyId }, replace: true })
   }
 
   const handleCsvExport = async () => {
@@ -171,8 +176,8 @@ export function VehicleFeeCollectionReportPage() {
                 <label className="text-xs font-medium text-muted-foreground">From Date</label>
                 <Input
                   type="date"
-                  value={filters.from || ''}
-                  onChange={(e) => setFilters(prev => ({ ...prev, from: e.target.value }))}
+                  value={draft.from || ''}
+                  onChange={(e) => setDraft(prev => ({ ...prev, from: e.target.value }))}
                   className="h-9 w-40"
                 />
               </div>
@@ -180,24 +185,24 @@ export function VehicleFeeCollectionReportPage() {
                 <label className="text-xs font-medium text-muted-foreground">To Date</label>
                 <Input
                   type="date"
-                  value={filters.to || ''}
-                  onChange={(e) => setFilters(prev => ({ ...prev, to: e.target.value }))}
+                  value={draft.to || ''}
+                  onChange={(e) => setDraft(prev => ({ ...prev, to: e.target.value }))}
                   className="h-9 w-40"
                 />
               </div>
               <div className="space-y-1">
                 <label className="text-xs font-medium text-muted-foreground">Fiscal Year</label>
                 <FiscalYearSelect
-                  value={filters.fiscal_year_id}
-                  onChange={(val) => setFilters(prev => ({ ...prev, fiscal_year_id: val }))}
+                  value={draft.fiscal_year_id}
+                  onChange={(val) => setDraft(prev => ({ ...prev, fiscal_year_id: val }))}
                 />
               </div>
               <div className="space-y-1">
                 <label className="text-xs font-medium text-muted-foreground">Search</label>
                 <Input
                   placeholder="Vehicle or rider name..."
-                  value={filters.search || ''}
-                  onChange={(e) => setFilters(prev => ({ ...prev, search: e.target.value }))}
+                  value={draft.search || ''}
+                  onChange={(e) => setDraft(prev => ({ ...prev, search: e.target.value }))}
                   className="h-9 w-44"
                 />
               </div>

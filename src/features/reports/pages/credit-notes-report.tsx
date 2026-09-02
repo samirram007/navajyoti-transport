@@ -1,5 +1,7 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
+import { useNavigate } from '@tanstack/react-router'
+import { Route } from '@/routes/_protected/reports/credit-notes'
 import { useReportingPeriod } from '@/hooks/use-reporting-period'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -97,19 +99,27 @@ function ReportSkeleton() {
 
 // ─── Main Page ──────────────────────────────────────────────────────────
 export function CreditNotesReportPage() {
-  const [filters, setFilters] = useState<ReportFilters>({ from: '', to: '' })
-  const [appliedFilters, setAppliedFilters] = useState<ReportFilters>({})
+  const navigate = useNavigate({ from: '/reports/credit-notes' })
+  const search = Route.useSearch()
 
-  // Default the report to the user's global reporting period (FY start → today)
+  const [draft, setDraft] = useState<ReportFilters>({})
+  const [initialized, setInitialized] = useState(false)
+
   const { from: periodFrom, to: periodTo, isLoading: periodLoading } = useReportingPeriod()
-  const periodAppliedRef = useRef(false)
   useEffect(() => {
-    if (periodLoading || periodAppliedRef.current) return
-    periodAppliedRef.current = true
-    setFilters(prev => ({ ...prev, from: periodFrom || '', to: periodTo || '' }))
-    setAppliedFilters(prev => ({ ...prev, from: periodFrom || undefined, to: periodTo || undefined }))
+    if (periodLoading || initialized) return
+    setInitialized(true)
+    if (!search.from && !search.to) {
+      navigate({ search: { from: periodFrom || undefined, to: periodTo || undefined }, replace: true })
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [periodLoading, periodFrom, periodTo])
+  }, [periodLoading, periodFrom, periodTo, initialized])
+
+  useEffect(() => {
+    setDraft({ from: search.from || '', to: search.to || '' })
+  }, [search.from, search.to])
+
+  const appliedFilters: ReportFilters = { from: search.from || undefined, to: search.to || undefined }
 
   const { data, isLoading, isError, error, refetch, isFetching } = useQuery({
     queryKey: ['credit-notes-report', appliedFilters],
@@ -118,15 +128,12 @@ export function CreditNotesReportPage() {
   })
 
   const handleApplyFilters = () => {
-    setAppliedFilters({
-      from: filters.from || undefined,
-      to: filters.to || undefined,
-    })
+    navigate({ search: { from: draft.from || undefined, to: draft.to || undefined }, replace: true })
   }
 
   const handleReset = () => {
-    setFilters({ from: periodFrom || '', to: periodTo || '' })
-    setAppliedFilters({ from: periodFrom || undefined, to: periodTo || undefined })
+    setDraft({})
+    navigate({ search: { from: periodFrom || undefined, to: periodTo || undefined }, replace: true })
   }
 
   const handleCsvExport = async () => {
@@ -197,8 +204,8 @@ export function CreditNotesReportPage() {
                 <label className="text-xs font-medium text-muted-foreground">From Date</label>
                 <Input
                   type="date"
-                  value={filters.from || ''}
-                  onChange={(e) => setFilters(prev => ({ ...prev, from: e.target.value }))}
+                  value={draft.from || ''}
+                  onChange={(e) => setDraft(prev => ({ ...prev, from: e.target.value }))}
                   className="h-9 w-40"
                 />
               </div>
@@ -206,8 +213,8 @@ export function CreditNotesReportPage() {
                 <label className="text-xs font-medium text-muted-foreground">To Date</label>
                 <Input
                   type="date"
-                  value={filters.to || ''}
-                  onChange={(e) => setFilters(prev => ({ ...prev, to: e.target.value }))}
+                  value={draft.to || ''}
+                  onChange={(e) => setDraft(prev => ({ ...prev, to: e.target.value }))}
                   className="h-9 w-40"
                 />
               </div>

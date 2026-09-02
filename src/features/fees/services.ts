@@ -104,3 +104,11 @@ export async function saveUserInitialValueApi(payload: { user_id: number; key: s
     return res.data.data
   }
 }
+
+export async function getOrganizationApi(id?: number) {
+  const url = id ? `/organizations/${id}` : '/organizations'
+  const res = await axiosClient.get(url, { params: id ? {} : { per_page: 1 } })
+  if (id) return res.data?.data || null
+  const orgs = res.data?.data || []
+  return orgs.length > 0 ? orgs[0] : null
+}

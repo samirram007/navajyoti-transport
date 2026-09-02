@@ -9,16 +9,17 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { SearchableSelect } from '@/components/ui/searchable-select'
+import { Switch } from '@/components/ui/switch'
 import { toast } from 'sonner'
 import { Pencil, Trash2, Plus, Save, X, RotateCcw, BadgeCheck, Loader2, Check, CircleX } from 'lucide-react'
-import { type ColumnDef, type SortingState, type ColumnFiltersState } from '@tanstack/react-table'
+import { type ColumnDef, type SortingState, type ColumnFiltersState, type ColumnFilter } from '@tanstack/react-table'
 import type { ZodSchema } from 'zod'
 import { cn } from '@/lib/utils'
 
 export interface Field {
   key: string
   label: string
-  type?: 'text' | 'number' | 'select' | 'date' | 'password' | 'time'
+  type?: 'text' | 'number' | 'select' | 'date' | 'password' | 'time' | 'switch'
   required?: boolean
   options?: { label: string; value: string | number }[]
   icon?: string
@@ -30,6 +31,10 @@ export interface Field {
   }
   /** Convert the raw input value before storing it in the form state */
   transform?: (value: any) => any
+  /** Default value when creating a new record */
+  defaultValue?: any
+  /** Called when field value changes — can update other fields via the second arg */
+  onChange?: (value: any, setForm: (updater: (prev: Record<string, any>) => Record<string, any>) => void) => void
 }
 
 interface ResourcePageProps {
@@ -45,6 +50,10 @@ interface ResourcePageProps {
   rowNameAccessor?: string
   onAddNew?: () => void
   onEditItem?: (id: number) => void
+  /** Default column filters applied when no URL filters are present */
+  initialColumnFilters?: ColumnFilter[]
+  /** Extra buttons rendered in the header next to the Add button */
+  headerActions?: React.ReactNode
 }
 
 /** Fetch options from a relation endpoint — used by both the hook and pre-fetch */
@@ -69,7 +78,7 @@ function useRelationOptions(field: Field) {
   })
 }
 
-export function ResourcePage({ title, endpoint, queryKey, fields, columns, searchKey = 'name', filterableColumns, schema, inlineForm = true, rowNameAccessor, onAddNew, onEditItem }: ResourcePageProps) {
+export function ResourcePage({ title, endpoint, queryKey, fields, columns, searchKey = 'name', filterableColumns, schema, inlineForm = true, rowNameAccessor, onAddNew, onEditItem, initialColumnFilters, headerActions }: ResourcePageProps) {
   const [editing, setEditing] = useState<any>(null)
   const [form, setForm] = useState<Record<string, any>>({})
   const [errors, setErrors] = useState<Record<string, string>>({})
@@ -104,7 +113,7 @@ export function ResourcePage({ title, endpoint, queryKey, fields, columns, searc
     if (urlSearch.filters) {
       try { return JSON.parse(urlSearch.filters as string) } catch { /* ignore */ }
     }
-    return []
+    return initialColumnFilters ?? []
   })
 
   // ── Sync state from URL on every navigation (back/forward) ──
@@ -125,7 +134,8 @@ export function ResourcePage({ title, endpoint, queryKey, fields, columns, searc
     if (urlSearch.filters) {
       try { setColumnFilters(JSON.parse(urlSearch.filters as string)) } catch { setColumnFilters([]) }
     } else {
-      setColumnFilters([])
+      // Keep initialColumnFilters on first load; only clear if user explicitly removes all filters
+      setColumnFilters(initialColumnFilters ?? [])
     }
   }, [urlSearch.filters])
 
@@ -226,7 +236,15 @@ export function ResourcePage({ title, endpoint, queryKey, fields, columns, searc
   }
 
   const openCreate = () => {
-    resetForm()
+    setEditing(null)
+    setErrors({})
+    const defaults: Record<string, any> = {}
+    for (const field of fields) {
+      if (field.defaultValue !== undefined) {
+        defaults[field.key] = field.defaultValue
+      }
+    }
+    setForm(defaults)
   }
 
   const openEdit = (item: any) => {
@@ -374,8 +392,11 @@ export function ResourcePage({ title, endpoint, queryKey, fields, columns, searc
                   error={errors[field.key]}
                   onChange={(value) => {
                     const v = field.transform ? field.transform(value) : value
-                    setForm({ ...form, [field.key]: v })
+                    setForm(prev => ({ ...prev, [field.key]: v }))
                     setErrors(prev => ({ ...prev, [field.key]: '' }))
+                    if (field.onChange) {
+                      field.onChange(v, setForm)
+                    }
                   }}
                 />
               ))}
@@ -437,12 +458,15 @@ export function ResourcePage({ title, endpoint, queryKey, fields, columns, searc
                 Manage your {title.toLowerCase()} records
               </p>
             </div>
-            {(!editing || !inlineForm) && (
-              <Button size="sm" className="h-8 text-xs gap-1" onClick={() => { if (!inlineForm) { onAddNew?.(); return }; openCreate() }}>
-                <Plus className="h-3.5 w-3.5" />
-                Add {title}
-              </Button>
-            )}
+            <div className="flex items-center gap-2">
+              {headerActions}
+              {(!editing || !inlineForm) && (
+                <Button size="sm" className="h-8 text-xs gap-1" onClick={() => { if (!inlineForm) { onAddNew?.(); return }; openCreate() }}>
+                  <Plus className="h-3.5 w-3.5" />
+                  Add {title}
+                </Button>
+              )}
+            </div>
           </div>
         </div>
         <div className="flex-1 p-4 overflow-auto">
@@ -505,7 +529,28 @@ function FormField({ field, value, error, onChange }: {
   // If field has a relation, use dynamic select
   if (field.relation) {
     return <RelationSelectField field={field} value={value} error={error} onChange={onChange} />
-  }      // Static select with search support
+  }      // Switch toggle for boolean fields — label + switch inline
+  if (field.type === 'switch') {
+    return (
+      <div className="flex items-center justify-between py-1">
+        <Label htmlFor={field.key} className="text-xs font-medium text-foreground/80 cursor-pointer">
+          {field.icon && <span className="mr-1.5">{field.icon}</span>}
+          {field.label}
+          {field.required && <span className="text-destructive ml-0.5">*</span>}
+        </Label>
+        <div className="flex items-center gap-2">
+          {error && <span className="text-[10px] text-destructive font-medium">{error}</span>}
+          <Switch
+            id={field.key}
+            checked={!!value}
+            onCheckedChange={onChange}
+          />
+        </div>
+      </div>
+    )
+  }
+
+  // Static select with search support
   if (field.type === 'select') {
     return (
       <div className="space-y-1.5">

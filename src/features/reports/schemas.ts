@@ -234,7 +234,7 @@ export interface YearTrend {
   total_income: number
   total_expenses: number
   net: number
-  collection_rate: number
+  expense_ratio: number
   monthly_data: MonthlyTrendDataPoint[]
 }
 
@@ -266,9 +266,19 @@ export interface PendingFeeDetail {
   vehicle: string
   billed: number
   collected: number
+  due_collected: number
   pending: number
   payment_mode: string | null
-  status: 'paid' | 'partial' | 'unpaid'
+  status: 'paid' | 'partial' | 'unpaid' | 'due'
+}
+
+export interface PendingDueRider {
+  rider_id: number
+  rider_name: string
+  rider_code: string | null
+  school: string
+  monthly_charge: number
+  pending_from_prev_month: number
 }
 
 export interface PendingMonthData {
@@ -278,7 +288,12 @@ export interface PendingMonthData {
   fiscal_year_name: string | null
   billed: number
   collected: number
+  due_collected: number
   pending: number
+  due: number
+  billed_due: number
+  unbilled_due: number
+  due_riders: PendingDueRider[]
   fee_count: number
   pending_fee_count: number
   rider_count: number
@@ -288,11 +303,16 @@ export interface PendingMonthData {
 export interface PendingCollectionSummary {
   total_billed: number
   total_collected: number
+  total_due_collected: number
   total_pending: number
+  total_due: number
+  billed_due: number
+  unbilled_due: number
   collection_rate: number
   total_fee_count: number
   pending_fee_count: number
   riders_with_pending: number
+  active_riders: number
   month_count: number
 }
 
