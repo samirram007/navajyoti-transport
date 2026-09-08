@@ -19,20 +19,9 @@ import { useReportingPeriod } from '@/hooks/use-reporting-period'
 import { CancelVoucherDialog } from '@/features/fees/components/cancel-voucher-dialog'
 import { RiderFeeSummaryDialog } from '@/features/fees/components/rider-fee-summary-dialog'
 import { PrintPreviewDialog } from '@/components/print-preview-dialog'
+import { buildReceiptHtml, formatReceiptDate, monthChipLabel } from '@/features/fees/receipt-print'
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
-
-const MONTHS_SHORT = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC']
-
-function formatReceiptDate(dateStr: string): string {
-  if (!dateStr) return ''
-  const d = new Date(dateStr)
-  if (isNaN(d.getTime())) return dateStr
-  const dd = String(d.getDate()).padStart(2, '0')
-  const mmm = MONTHS_SHORT[d.getMonth()]
-  const yyyy = d.getFullYear()
-  return `${dd}-${mmm}-${yyyy}`
-}
 
 function formatAmount(val: number | undefined | null): string {
   const n = Number(val || 0)
@@ -48,117 +37,6 @@ function getFeeStatus(fee: any): string {
   if (paid === 0 && total > 0) return 'Unpaid'
   if (balance > 0) return 'Partial'
   return ''
-}
-
-function numberToWords(num: number): string {
-  if (num === 0) return 'Zero'
-  const ones = ['', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine',
-    'Ten', 'Eleven', 'Twelve', 'Thirteen', 'Fourteen', 'Fifteen', 'Sixteen',
-    'Seventeen', 'Eighteen', 'Nineteen']
-  const tens = ['', '', 'Twenty', 'Thirty', 'Forty', 'Fifty', 'Sixty', 'Seventy', 'Eighty', 'Ninety']
-  const convert = (n: number): string => {
-    if (n < 20) return ones[n]
-    if (n < 100) return tens[Math.floor(n / 10)] + (n % 10 ? ' ' + ones[n % 10] : '')
-    if (n < 1000) return ones[Math.floor(n / 100)] + ' Hundred' + (n % 100 ? ' and ' + convert(n % 100) : '')
-    if (n < 100000) return convert(Math.floor(n / 1000)) + ' Thousand' + (n % 1000 ? ' ' + convert(n % 1000) : '')
-    if (n < 10000000) return convert(Math.floor(n / 100000)) + ' Lakh' + (n % 100000 ? ' ' + convert(n % 100000) : '')
-    return convert(Math.floor(n / 10000000)) + ' Crore' + (n % 10000000 ? ' ' + convert(n % 10000000) : '')
-  }
-  const intPart = Math.floor(num)
-  const decPart = Math.round((num - intPart) * 100)
-  let result = convert(intPart) + ' Rupees'
-  if (decPart > 0) result += ' and ' + convert(decPart) + ' Paise'
-  return result + ' Only'
-}
-
-function buildReceiptHtml(data: {
-  feeNo?: string
-  date: string
-  riderName?: string
-  riderStd?: string
-  riderSection?: string
-  riderRollNo?: string
-  riderCode?: string
-  riderSchoolName?: string
-  riderSchoolTime?: string
-  items: { name?: string; months?: string; qty: number; amount: number; total: number }[]
-  totalAmount: number
-  paidAmount: number
-  balanceAmount: number
-  paymentMode: string
-  note?: string
-  orgName?: string
-  orgAddress?: string
-}) {
-  return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Money Receipt</title>
-<style>
-@page{size:A5 landscape;margin:10mm}
-*{margin:0;padding:0;box-sizing:border-box}
-html,body{width:100%;height:100%}
-body{font-family:'Segoe UI',Helvetica,Arial,sans-serif;color:#000;background:#fff}
-.page{width:100%;min-height:100%;display:flex;flex-direction:column;padding:12px 16px}
-.receipt-num{font-size:11pt;font-weight:600;letter-spacing:0.5px}
-.date-line{text-align:right;font-size:10pt;color:#333;margin-top:-18px}
-.org-center{text-align:center;margin-top:16px;margin-bottom:4px}
-.org-center h1{font-size:18pt;font-weight:900;letter-spacing:2px;line-height:1.2}
-.org-center p{font-size:8pt;color:#444;margin-top:2px;max-width:420px;margin-left:auto;margin-right:auto}
-.receipt-title{text-align:center;font-size:13pt;font-weight:700;text-decoration:underline;margin:10px 0 12px 0;letter-spacing:1px}
-.rider-info{margin-bottom:12px;font-size:10pt;line-height:1.8;padding-left:8px}
-.rider-info .row{display:flex;flex-wrap:wrap;gap:0 24px}
-.rider-info .label{font-weight:400;color:#333}
-.rider-info .value{font-weight:700}
-.table-section{flex:1;border-top:1px solid #000;border-bottom:2px solid #000}
-table{width:100%;border-collapse:collapse}
-thead th{background:#000;color:#fff;padding:6px 12px;font-size:9pt;font-weight:600;text-align:left;text-transform:uppercase;letter-spacing:0.5px}
-thead th.r{text-align:right}
-tbody td{padding:8px 12px;font-size:10pt;border-bottom:1px solid #ddd;vertical-align:top}
-tbody td.r{text-align:right;font-variant-numeric:tabular-nums}
-tbody tr:last-child td{border-bottom:none}
-.total-row td{font-weight:800;font-size:12pt;border-top:2px solid #000!important;border-bottom:none!important}
-.amount-words{margin-top:8px;font-size:9pt;color:#333;font-style:italic}
-.stamp-area{display:flex;justify-content:flex-end;margin-top:20px;min-height:80px}
-.stamp-circle{width:80px;height:80px;border:2px dashed #999;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:7pt;color:#999;text-align:center}
-.ftr{text-align:center;font-size:8pt;color:#555;padding-top:8px;border-top:1px solid #000;margin-top:8px}
-</style></head><body>
-<div class="page">
-  <div class="receipt-num">${data.feeNo || ''}</div>
-  <div class="date-line">Date: ${data.date}</div>
-  <div class="org-center">
-    <h1>${data.orgName || 'JAY MAA KALI SCHOOL BUS SERVICE'}</h1>
-    ${data.orgAddress ? `<p>${data.orgAddress}</p>` : ''}
-  </div>
-  <div class="receipt-title">Money Receipt</div>
-  <div class="rider-info">
-    <div class="row">
-      <span><span class="label">Name: </span><span class="value">${data.riderName || '---'}</span></span>
-    </div>
-    <div class="row">
-      <span><span class="label">School: </span><span class="value">${data.riderSchoolName || '---'}</span></span>
-    </div>
-    <div class="row">
-      ${data.riderCode ? `<span><span class="label">Code: </span><span class="value">${data.riderCode}</span></span>` : ''}
-      ${data.riderStd ? `<span><span class="label">Class: </span><span class="value">${data.riderStd}</span></span>` : ''}
-      ${data.riderSection ? `<span><span class="label">Sec: </span><span class="value">${data.riderSection}</span></span>` : ''}
-      ${data.riderRollNo ? `<span><span class="label">RollNo: </span><span class="value">${data.riderRollNo}</span></span>` : ''}
-      ${data.riderSchoolTime ? `<span><span class="label">Time: </span><span class="value">${data.riderSchoolTime}</span></span>` : ''}
-    </div>
-  </div>
-  <div class="table-section">
-    <table>
-      <thead><tr><th>Particulars</th><th class="r">Amount</th></tr></thead>
-      <tbody>
-        ${data.items.map(i => `<tr><td>${i.name || 'Fee'}${i.months ? ` <span style="font-size:8pt;color:#555;border:1px solid #ccc;padding:1px 4px;border-radius:3px;margin-left:4px">${i.months}</span>` : ''}</td><td class="r">${i.total.toLocaleString()}</td></tr>`).join('')}
-        <tr class="total-row"><td style="text-align:right;font-weight:800">Total:</td><td class="r">${data.totalAmount.toLocaleString()}</td></tr>
-      </tbody>
-    </table>
-  </div>
-  <div class="amount-words">(in words) : ${numberToWords(data.totalAmount)}</div>
-  <div class="stamp-area">
-    <div class="stamp-circle">Authorized<br/>Stamp</div>
-  </div>
-  <div class="ftr">${data.orgName || 'School Bus Service'} \u2022 ${data.date} \u2022 Print Time: ${new Date().toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'})} ${new Date().toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'})}</div>
-</div>
-</body></html>`
 }
 
 export function FeesPage() {
@@ -482,11 +360,7 @@ export function FeesPage() {
                   name: i.feeHead?.name || 'Fee',
                   months: (i.feeItemMonths || []).map((m: any) => ({
                     num: m.month?.number || 0,
-                    label: (() => {
-                      const name = m.month?.shortName || m.month?.name || '';
-                      const fyYear = fee.fiscalYear?.startDate ? new Date(fee.fiscalYear.startDate).getFullYear() : '';
-                      return name && fyYear ? `${name} ${String(fyYear).slice(-2)}` : name;
-                    })(),
+                    label: monthChipLabel(m.month, fee.fiscalYear?.startDate),
                   })).filter((m: any) => m.label).sort((a: any, b: any) => a.num - b.num).map((m: any) => m.label).join(', '),
                   qty: i.quantity,
                   amount: i.amount,
